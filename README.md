@@ -38,7 +38,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3200](http://localhost:3200).
 
 Create the key with at least **`whatsapp:write`**. Workspace keys use `bk_{region}_…`; the app derives `https://{region}.platform.bird.com` when `BIRD_API_BASE_URL` is omitted.
 
