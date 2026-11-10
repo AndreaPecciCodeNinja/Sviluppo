@@ -162,10 +162,9 @@ export function ChatApp() {
           <code>whatsapp:write</code>. Restart <code>npm run dev</code> after
           saving.
         </p>
-        <p className="hint">
-          Sentiment browse (offline, no API key):{" "}
-          <Link href="/sentiment">/sentiment</Link>
-        </p>
+        <Link href="/sentiment" className="nav-action-btn setup-sentiment-btn">
+          Apri analisi sentiment
+        </Link>
         {error ? (
           <p className="banner-error" role="alert">
             {error}
@@ -178,14 +177,21 @@ export function ChatApp() {
   return (
     <div className="shell">
       <aside className="pane inbox-pane">
-        <header className="pane-header">
-          <h1>WhatsApp Inbox</h1>
-          <p className="muted">
-            Bird · CodeNinja
-            {status?.phoneNumber ? ` · ${status.phoneNumber}` : ""}
-            {" · "}
-            <Link href="/sentiment">Sentiment</Link>
-          </p>
+        <header className="pane-header inbox-header">
+          <div className="inbox-header-text">
+            <h1>WhatsApp Inbox</h1>
+            <p className="muted">
+              Bird · CodeNinja
+              {status?.phoneNumber ? ` · ${status.phoneNumber}` : ""}
+            </p>
+          </div>
+          <Link
+            href="/sentiment"
+            className="nav-action-btn"
+            aria-label="Apri analisi sentiment chat"
+          >
+            Analisi
+          </Link>
         </header>
         <Inbox
           conversations={conversations}

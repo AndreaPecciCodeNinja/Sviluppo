@@ -87,6 +87,61 @@ code,
   letter-spacing: -0.01em;
 }
 
+.inbox-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.inbox-header-text {
+  min-width: 0;
+}
+
+.nav-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: #9fe0c4;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 0.45rem 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.nav-action-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  text-decoration: none;
+}
+
+.nav-action-btn-back {
+  background: rgba(26, 34, 44, 0.9);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.nav-action-btn-back:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: #9fe0c4;
+}
+
+.setup-sentiment-btn {
+  margin-top: 1rem;
+  width: 100%;
+  padding: 0.7rem 1rem;
+}
+
 .muted {
   color: var(--muted);
   margin: 0.25rem 0 0;

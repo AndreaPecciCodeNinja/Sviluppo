@@ -275,7 +275,9 @@ export function SentimentView({ report }: Props) {
             Bird API key
           </p>
           <nav className="sent-nav">
-            <Link href="/">← Inbox live</Link>
+            <Link href="/" className="nav-action-btn nav-action-btn-back">
+              ← Torna all’inbox
+            </Link>
             <span className="muted">Fonte: data/sentiment.json</span>
           </nav>
         </div>

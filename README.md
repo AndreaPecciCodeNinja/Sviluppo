@@ -48,7 +48,7 @@ npm install
 npm run dev
 ```
 
-Then open **[http://localhost:3200/sentiment](http://localhost:3200/sentiment)**.
+Then open **[http://localhost:3200/sentiment](http://localhost:3200/sentiment)**, or click the **Analisi** button in the inbox header (also on the setup screen when Bird credentials are missing). From sentiment, **← Torna all’inbox** returns to `/`.
 
 The page reads committed static data in `data/sentiment.json` (derived from the project sentiment markdown report). You get:
 
