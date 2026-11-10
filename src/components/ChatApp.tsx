@@ -109,10 +109,26 @@ export function ChatApp() {
       });
       const data = (await res.json()) as {
         message?: ChatMessage;
-        error?: { message?: string };
+        error?: {
+          message?: string;
+          code?: string | null;
+          name?: string | null;
+          bird_message?: string | null;
+          status?: number;
+        };
       };
       if (!res.ok) {
-        setError(data.error?.message || `Send failed (${res.status})`);
+        const parts = [
+          data.error?.message,
+          data.error?.code && !data.error?.message?.includes(data.error.code)
+            ? `(${data.error.code})`
+            : null,
+        ].filter(Boolean);
+        setError(
+          parts.length > 0
+            ? parts.join(" ")
+            : `Send failed (HTTP ${res.status})`,
+        );
       }
       await Promise.all([loadMessages(selectedId), loadConversations()]);
     } catch (err) {

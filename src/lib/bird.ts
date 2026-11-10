@@ -6,16 +6,172 @@ import type {
   ServiceWindowStatus,
 } from "./types";
 
+export type BirdErrorEnvelope = {
+  type?: string;
+  code?: string;
+  name?: string;
+  message?: string;
+  doc_url?: string;
+  request_id?: string;
+  details?: Array<{ param?: string; message?: string }>;
+  vendor_code?: string;
+};
+
 export class BirdApiError extends Error {
   status: number;
   body: unknown;
+  code?: string;
+  type?: string;
+  errorName?: string;
+  docUrl?: string;
+  requestId?: string;
+  details?: BirdErrorEnvelope["details"];
+  /** Raw Bird `error.message` when present. */
+  birdMessage?: string;
 
-  constructor(message: string, status: number, body: unknown) {
+  constructor(
+    message: string,
+    status: number,
+    body: unknown,
+    fields?: Partial<
+      Pick<
+        BirdApiError,
+        | "code"
+        | "type"
+        | "errorName"
+        | "docUrl"
+        | "requestId"
+        | "details"
+        | "birdMessage"
+      >
+    >,
+  ) {
     super(message);
     this.name = "BirdApiError";
     this.status = status;
     this.body = body;
+    this.code = fields?.code;
+    this.type = fields?.type;
+    this.errorName = fields?.errorName;
+    this.docUrl = fields?.docUrl;
+    this.requestId = fields?.requestId;
+    this.details = fields?.details;
+    this.birdMessage = fields?.birdMessage;
   }
+
+  /** JSON shape returned by our Route Handlers. */
+  toJson() {
+    return {
+      message: this.message,
+      status: this.status,
+      code: this.code ?? null,
+      type: this.type ?? null,
+      name: this.errorName ?? null,
+      bird_message: this.birdMessage ?? null,
+      doc_url: this.docUrl ?? null,
+      request_id: this.requestId ?? null,
+      details: this.details ?? null,
+      body: this.body,
+    };
+  }
+}
+
+/** Pull Bird's nested `{ error: { code, message, ... } }` envelope from a response body. */
+export function extractBirdErrorEnvelope(body: unknown): BirdErrorEnvelope | null {
+  if (!body || typeof body !== "object") return null;
+  const root = body as Record<string, unknown>;
+  const nested =
+    root.error && typeof root.error === "object"
+      ? (root.error as Record<string, unknown>)
+      : root;
+
+  const code = typeof nested.code === "string" ? nested.code : undefined;
+  const message =
+    typeof nested.message === "string" ? nested.message : undefined;
+  const type = typeof nested.type === "string" ? nested.type : undefined;
+  const name = typeof nested.name === "string" ? nested.name : undefined;
+  if (!code && !message && !type && !name) return null;
+
+  return {
+    type,
+    code,
+    name,
+    message,
+    doc_url: typeof nested.doc_url === "string" ? nested.doc_url : undefined,
+    request_id:
+      typeof nested.request_id === "string" ? nested.request_id : undefined,
+    details: Array.isArray(nested.details)
+      ? (nested.details as BirdErrorEnvelope["details"])
+      : undefined,
+    vendor_code:
+      typeof nested.vendor_code === "string" ? nested.vendor_code : undefined,
+  };
+}
+
+export function isServiceWindowClosedError(
+  err: Pick<BirdApiError, "code" | "errorName" | "birdMessage" | "message">,
+): boolean {
+  if (err.code === "E15044") return true;
+  if (err.errorName === "WhatsAppServiceWindowClosed") return true;
+  const haystack = `${err.birdMessage || ""} ${err.message || ""}`.toLowerCase();
+  return (
+    haystack.includes("service window") ||
+    haystack.includes("customer service window")
+  );
+}
+
+/**
+ * User-facing send error. For E15044, bilingual IT/EN guidance.
+ * Always includes Bird code when known.
+ */
+export function formatBirdSendError(err: BirdApiError): string {
+  const codePart = err.code ? `[${err.code}]` : null;
+  if (isServiceWindowClosedError(err)) {
+    return [
+      "IT: Finestra di servizio WhatsApp (24h) chiusa — serve un messaggio in ingresso dal contatto, oppure un template approvato su Bird.",
+      "EN: 24-hour customer service window is closed — wait for an inbound message from the contact, or send an approved template from Bird.",
+      [codePart, err.errorName, err.birdMessage].filter(Boolean).join(" — ") ||
+        null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  const birdPart = err.birdMessage || err.message || `Bird API HTTP ${err.status}`;
+  const namePart = err.errorName ? ` (${err.errorName})` : "";
+  const codeSuffix = codePart ? ` ${codePart}` : "";
+  return `${birdPart}${namePart}${codeSuffix}`;
+}
+
+export function birdApiErrorFromResponse(
+  status: number,
+  body: unknown,
+): BirdApiError {
+  const envelope = extractBirdErrorEnvelope(body);
+  const birdMessage = envelope?.message;
+  const provisional = new BirdApiError(
+    birdMessage || `Bird API HTTP ${status}`,
+    status,
+    body,
+    {
+      code: envelope?.code,
+      type: envelope?.type,
+      errorName: envelope?.name,
+      docUrl: envelope?.doc_url,
+      requestId: envelope?.request_id,
+      details: envelope?.details,
+      birdMessage,
+    },
+  );
+  return new BirdApiError(formatBirdSendError(provisional), status, body, {
+    code: provisional.code,
+    type: provisional.type,
+    errorName: provisional.errorName,
+    docUrl: provisional.docUrl,
+    requestId: provisional.requestId,
+    details: provisional.details,
+    birdMessage: provisional.birdMessage,
+  });
 }
 
 export function getBirdConfig() {
@@ -162,14 +318,7 @@ async function birdFetch<T>(
   }
 
   if (!response.ok) {
-    const message =
-      (typeof body === "object" &&
-        body &&
-        "message" in body &&
-        typeof (body as { message: unknown }).message === "string" &&
-        (body as { message: string }).message) ||
-      `Bird API HTTP ${response.status}`;
-    throw new BirdApiError(message, response.status, body);
+    throw birdApiErrorFromResponse(response.status, body);
   }
 
   return body as T;

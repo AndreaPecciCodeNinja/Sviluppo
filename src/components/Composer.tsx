@@ -28,7 +28,7 @@ export function Composer({
   const placeholder = disabled
     ? "Select a conversation to reply"
     : windowClosed
-      ? "Customer service window closed — free-form text may be refused (use a template in Bird)"
+      ? "Finestra 24h chiusa / window closed — serve inbound o template Bird"
       : "Type a reply…";
 
   return (

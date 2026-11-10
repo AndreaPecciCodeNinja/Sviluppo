@@ -72,7 +72,7 @@ Create the key with at least **`whatsapp:write`**. Workspace keys use `bk_{regio
 - **Default:** the UI polls Bird every few seconds (good for local dev).
 - **Optional:** register `https://<public-host>/api/webhook` in Bird → Webhooks for `whatsapp.received` (and status events). Expose HTTPS with ngrok/cloudflared. Signature verification uses `BIRD_WEBHOOK_SECRET` when set.
 
-Free-form replies require an open **24-hour customer service window**. Outside the window Bird refuses text (`E15044`); send a template from Bird instead.
+Free-form replies require an open **24-hour customer service window**. Outside the window Bird refuses text (`E15044` / `WhatsAppServiceWindowClosed`); the UI and `POST /api/messages` error JSON surface Bird’s `code`, `name`, and message, plus IT/EN guidance to wait for an inbound message or send a template from Bird.
 
 ## Project layout
 

@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     if (err instanceof BirdApiError) {
       return NextResponse.json(
-        { error: { message: err.message, body: err.body } },
+        { error: err.toJson() },
         { status: err.status >= 400 && err.status < 600 ? err.status : 502 },
       );
     }

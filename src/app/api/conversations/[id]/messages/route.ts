@@ -22,10 +22,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof BirdApiError) {
-      return NextResponse.json(
-        { error: { message: err.message, body: err.body } },
-        { status: err.status },
-      );
+      return NextResponse.json({ error: err.toJson() }, { status: err.status });
     }
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: { message } }, { status: 500 });

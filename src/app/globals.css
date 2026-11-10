@@ -318,7 +318,9 @@ code,
   background: var(--danger-bg);
   color: #f0c0c0;
   font-size: 0.85rem;
+  line-height: 1.45;
   border-top: 1px solid #5a2f2f;
+  white-space: pre-wrap;
 }
 
 .linkish {
