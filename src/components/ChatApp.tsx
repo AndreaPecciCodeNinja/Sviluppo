@@ -22,6 +22,11 @@ export function ChatApp() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(
+    null,
+  );
+  const [transcribing, setTranscribing] = useState(false);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId),
@@ -96,7 +101,65 @@ export function ChatApp() {
     } else {
       setMessages([]);
     }
+    setSelectedMessage(null);
+    setDraft("");
+    setTranscribing(false);
   }, [status?.configured, selectedId, loadMessages]);
+
+  async function handleSelectMessage(message: ChatMessage) {
+    if (message.direction !== "inbound") return;
+    setSelectedMessage(message);
+    setError(null);
+
+    if (message.kind === "audio" && message.audio?.mediaId) {
+      setDraft("");
+      setTranscribing(true);
+      try {
+        const res = await fetch("/api/messages/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messageId: message.id,
+            mediaId: message.audio.mediaId,
+            voiceNote: message.audio.voice,
+            mimeType: message.audio.mimeType,
+          }),
+        });
+        const data = (await res.json()) as {
+          transcription?: { text?: string };
+          error?: { message?: string };
+        };
+        if (!res.ok) {
+          setError(
+            data.error?.message ||
+              `Transcription failed (HTTP ${res.status})`,
+          );
+          setDraft("");
+          return;
+        }
+        setDraft(data.transcription?.text?.trim() || "");
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Transcription failed",
+        );
+      } finally {
+        setTranscribing(false);
+      }
+      return;
+    }
+
+    // Text (and other) inbound: put readable body in the editable box.
+    const text =
+      message.kind === "text"
+        ? message.text
+        : message.text.replace(/^\[.*?\]\s*/, "") || message.text;
+    setDraft(text.startsWith("[") ? "" : text);
+    if (message.kind !== "text") {
+      setError(
+        `Messaggio ${message.kind}: nessun testo da copiare. Solo testo e audio/vocali sono supportati nel box.`,
+      );
+    }
+  }
 
   async function handleSend(text: string) {
     if (!selectedId) return;
@@ -130,6 +193,9 @@ export function ChatApp() {
             ? parts.join(" ")
             : `Send failed (HTTP ${res.status})`,
         );
+      } else {
+        setDraft("");
+        setSelectedMessage(null);
       }
       await Promise.all([loadMessages(selectedId), loadConversations()]);
     } catch (err) {
@@ -163,7 +229,8 @@ export function ChatApp() {
           saving.
         </p>
         <p className="hint">
-          Sentiment browse (offline, no API key):{" "}
+          Per trascivere i vocali serve anche{" "}
+          <code>OPENAI_API_KEY</code> (Whisper). Sentiment browse (offline):{" "}
           <Link href="/sentiment">/sentiment</Link>
         </p>
         {error ? (
@@ -174,6 +241,14 @@ export function ChatApp() {
       </div>
     );
   }
+
+  const selectedLabel = selectedMessage
+    ? selectedMessage.kind === "audio"
+      ? selectedMessage.audio?.voice
+        ? "vocalino"
+        : "audio"
+      : "testo"
+    : null;
 
   return (
     <div className="shell">
@@ -200,12 +275,25 @@ export function ChatApp() {
           contactAddress={selected?.contactAddress}
           serviceWindowStatus={selected?.serviceWindowStatus}
           messages={messages}
+          selectedMessageId={selectedMessage?.id ?? null}
+          onSelectMessage={(m) => {
+            void handleSelectMessage(m);
+          }}
         />
         {error ? <p className="banner-error" role="alert">{error}</p> : null}
         <Composer
           disabled={!selectedId}
           sending={sending}
           windowClosed={selected?.serviceWindowStatus === "closed"}
+          text={draft}
+          onTextChange={setDraft}
+          selectedLabel={selectedLabel}
+          statusLabel={transcribing ? "Trascrizione…" : null}
+          onClearSelection={() => {
+            setSelectedMessage(null);
+            setDraft("");
+            setTranscribing(false);
+          }}
           onSend={handleSend}
         />
       </section>

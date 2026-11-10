@@ -27,6 +27,7 @@ Set `BIRD_WHATSAPP_PHONE_NUMBER=+393337802795` so list/send calls scope to this 
 - Optional webhook receiver at `/api/webhook` (scaffold acknowledges; UI polls)
 - Setup screen when `BIRD_API_KEY` is missing (no invented secrets)
 - **Offline sentiment browse** at [`/sentiment`](http://localhost:3200/sentiment) — charts + urgency callouts + filterable list from `data/sentiment.json` (no Bird API key)
+- **Select inbound message** → editable composer box; **voice notes / audio** download via Bird media API and transcribe with OpenAI Whisper (`language=it`)
 
 ## Quick start
 
@@ -60,6 +61,15 @@ No `BIRD_API_KEY` is required for `/sentiment`.
 
 Create the key with at least **`whatsapp:write`** for the live inbox. Workspace keys use `bk_{region}_…`; the app derives `https://{region}.platform.bird.com` when `BIRD_API_BASE_URL` is omitted.
 
+### Select message + voice transcription
+
+1. Open a conversation in the inbox.
+2. Click an **inbound** bubble.
+3. Text fills the editable composer box (edit before Send).
+4. A **vocalino / audio** shows **Trascrizione…**, downloads media from Bird (`GET /v1/whatsapp/messages/{id}/media/{media_id}`), then fills the box with Whisper text (Italian preferred).
+
+Requires `OPENAI_API_KEY` in `.env.local` for step 4. Without it, text selection still works; audio shows a clear missing-key error.
+
 ## Environment variables
 
 | Variable | Required | Purpose |
@@ -71,6 +81,9 @@ Create the key with at least **`whatsapp:write`** for the live inbox. Workspace 
 | `BIRD_WORKSPACE_ID` | no | Only if using a master key |
 | `BIRD_WEBHOOK_SECRET` | no | `whsec_…` for Standard Webhooks verify |
 | `NEXT_PUBLIC_POLL_INTERVAL_MS` | no | UI poll interval (default 3000) |
+| `OPENAI_API_KEY` | for voice STT | Whisper transcription of inbound audio |
+| `OPENAI_TRANSCRIBE_MODEL` | no | default `whisper-1` |
+| `OPENAI_TRANSCRIBE_LANGUAGE` | no | default `it` (Italian) |
 
 **Never commit real keys.** `.env*` is gitignored except `.env.example`.
 
@@ -83,6 +96,7 @@ Create the key with at least **`whatsapp:write`** for the live inbox. Workspace 
 | `GET` | `/api/conversations` | Inbox list (Bird) |
 | `GET` | `/api/conversations/:id/messages` | Thread (Bird) |
 | `POST` | `/api/messages` | `{ conversationId, text }` send via Bird |
+| `POST` | `/api/messages/transcribe` | `{ messageId, mediaId }` → Whisper text |
 | `POST` | `/api/webhook` | Optional Bird event receiver |
 
 ## Realtime: polling vs webhooks
@@ -95,13 +109,15 @@ Free-form replies require an open **24-hour customer service window**. Outside t
 ## Project layout
 
 ```
-src/lib/bird.ts              Bird REST client (server-only)
+src/lib/bird.ts              Bird REST client + media download (server-only)
+src/lib/transcribe.ts        Bird media → OpenAI Whisper
 src/lib/sentiment.ts         Sentiment types / label helpers
 data/sentiment.json          Offline sentiment snapshot (no Bird calls)
 src/app/api/                 Next.js Route Handlers
 src/app/sentiment/           Offline sentiment charts + browse UI
 src/components/              Inbox, Thread, Composer, SentimentView
 ```
+
 
 ## Related PRs
 
