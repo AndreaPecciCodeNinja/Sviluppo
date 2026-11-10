@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "food_ingredients_meal",
+      "label": "Pranzo o cena con ingredienti",
+      "intent": "The contact listed food ingredients or aliments (often several items) and seems to want a meal prepared with them.",
+      "when_to_use": "Use when the message is primarily a list of ingredients/foods (e.g. four alimenti like pomodori, mozzarella, basilico, olio) and they have not already specified lunch vs dinner clearly.",
+      "body": "Hai elencato questi ingredienti: {{ingredients}}.\nVuoi che ti prepari il *pranzo* o la *cena* con questi?",
+      "slots": [
+        {
+          "name": "ingredients",
+          "description": "Comma-separated list of the food items/ingredients mentioned, preferably in Italian, without trailing punctuation."
+        }
+      ]
+    },
+    {
+      "id": "generic_ack",
+      "label": "Conferma generica",
+      "intent": "Polite short acknowledgement when no specialized template fits.",
+      "when_to_use": "Fallback only when no other template clearly matches the inbound text.",
+      "body": "Grazie per il messaggio — ti rispondo a breve.",
+      "slots": []
+    }
+  ]
+}
