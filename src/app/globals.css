@@ -227,6 +227,38 @@ code,
   border-radius: 12px;
   font-size: 0.95rem;
   line-height: 1.4;
+  border: 1px solid transparent;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+button.bubble {
+  cursor: pointer;
+  appearance: none;
+  display: block;
+}
+
+.bubble.selectable:hover {
+  border-color: var(--accent);
+}
+
+.bubble.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.bubble-kind {
+  display: inline-block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.thread-hint {
+  margin-top: 0.55rem;
 }
 
 .bubble p {
@@ -272,14 +304,47 @@ code,
 .composer {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 0.75rem;
+  grid-template-areas:
+    "meta meta"
+    "status status"
+    "input send";
+  gap: 0.55rem 0.75rem;
   padding: 0.9rem 1.25rem 1.15rem;
   border-top: 1px solid var(--border);
   background: rgba(15, 20, 25, 0.85);
   backdrop-filter: blur(8px);
 }
 
+.composer-meta {
+  grid-area: meta;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.composer-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.composer-clear {
+  margin-top: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.composer-status {
+  grid-area: status;
+  margin: 0;
+  font-size: 0.85rem;
+  color: #d6c28a;
+}
+
 .composer textarea {
+  grid-area: input;
   resize: none;
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -295,7 +360,8 @@ code,
   outline-offset: 1px;
 }
 
-.composer button {
+.composer > button[type="submit"] {
+  grid-area: send;
   align-self: end;
   border: none;
   border-radius: var(--radius);
@@ -307,7 +373,7 @@ code,
   cursor: pointer;
 }
 
-.composer button:disabled {
+.composer > button[type="submit"]:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }

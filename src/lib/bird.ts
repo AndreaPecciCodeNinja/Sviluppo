@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import type {
   ChatMessage,
+  ChatMessageKind,
   Conversation,
   MessageStatus,
   ServiceWindowStatus,
@@ -258,8 +259,18 @@ type BirdMessage = {
   status?: string;
   created_at?: string;
   text?: { body?: string } | null;
-  image?: { caption?: string | null } | null;
-  document?: { caption?: string | null; filename?: string | null } | null;
+  audio?: {
+    id?: string;
+    url?: string;
+    mime_type?: string | null;
+    voice?: boolean | null;
+  } | null;
+  image?: { caption?: string | null; id?: string } | null;
+  document?: {
+    caption?: string | null;
+    filename?: string | null;
+    id?: string;
+  } | null;
   interactive?: unknown;
   template?: unknown;
   from?: {
@@ -361,8 +372,23 @@ function mapStatus(status: string | undefined): MessageStatus {
   }
 }
 
+function messageKind(message: BirdMessage): ChatMessageKind {
+  if (message.text?.body) return "text";
+  if (message.audio?.id) return "audio";
+  if (message.image) return "image";
+  if (message.document) return "document";
+  if (message.template) return "template";
+  if (message.interactive) return "interactive";
+  return "other";
+}
+
 function extractText(message: BirdMessage): string {
   if (message.text?.body) return message.text.body;
+  if (message.audio?.id) {
+    return message.audio.voice
+      ? "[vocalino / voice note]"
+      : "[audio attachment]";
+  }
   if (message.image?.caption) return `[image] ${message.image.caption}`;
   if (message.document?.filename) {
     return `[document] ${message.document.filename}`;
@@ -397,6 +423,7 @@ export function mapMessage(
   raw: BirdMessage,
   conversationId: string,
 ): ChatMessage {
+  const kind = messageKind(raw);
   return {
     id: raw.id,
     conversationId,
@@ -404,7 +431,119 @@ export function mapMessage(
     text: extractText(raw),
     timestamp: raw.created_at || new Date().toISOString(),
     status: mapStatus(raw.status),
+    kind,
+    audio:
+      kind === "audio" && raw.audio?.id
+        ? {
+            mediaId: raw.audio.id,
+            mimeType: raw.audio.mime_type ?? null,
+            voice: Boolean(raw.audio.voice),
+          }
+        : undefined,
     error: raw.error?.message,
+  };
+}
+
+export type DownloadedMedia = {
+  bytes: Buffer;
+  contentType: string;
+  filename: string;
+};
+
+/**
+ * Download inbound WhatsApp media bytes from Bird.
+ * Follows the 302 to object storage **without** re-sending Authorization
+ * (storage URLs reject the Bird bearer).
+ */
+export async function downloadWhatsAppMedia(
+  messageId: string,
+  mediaId: string,
+): Promise<DownloadedMedia> {
+  const cfg = getBirdConfig();
+  if (!cfg.apiKey) {
+    throw new BirdApiError(
+      "Missing BIRD_API_KEY — required to download WhatsApp media",
+      503,
+      { code: "missing_bird_api_key" },
+    );
+  }
+
+  const path = `/v1/whatsapp/messages/${encodeURIComponent(messageId)}/media/${encodeURIComponent(mediaId)}`;
+  const url = new URL(
+    path,
+    cfg.baseUrl.endsWith("/") ? cfg.baseUrl : `${cfg.baseUrl}/`,
+  );
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${cfg.apiKey}`,
+    Accept: "*/*",
+  };
+  if (cfg.workspaceId) {
+    headers["X-Workspace-Id"] = cfg.workspaceId;
+  }
+
+  const first = await fetch(url, {
+    method: "GET",
+    headers,
+    redirect: "manual",
+    cache: "no-store",
+  });
+
+  let mediaResponse: Response;
+  if (first.status >= 300 && first.status < 400) {
+    const location = first.headers.get("location");
+    if (!location) {
+      throw new BirdApiError(
+        "Bird media redirect missing Location header",
+        502,
+        { code: "media_redirect_missing_location" },
+      );
+    }
+    // Storage hop must not carry the Bird Authorization header.
+    mediaResponse = await fetch(location, {
+      method: "GET",
+      redirect: "follow",
+      cache: "no-store",
+    });
+  } else if (first.ok) {
+    mediaResponse = first;
+  } else {
+    const text = await first.text();
+    let body: unknown = text;
+    try {
+      body = JSON.parse(text) as unknown;
+    } catch {
+      /* keep text */
+    }
+    throw birdApiErrorFromResponse(first.status, body);
+  }
+
+  if (!mediaResponse.ok) {
+    throw new BirdApiError(
+      `Failed to download media bytes (HTTP ${mediaResponse.status})`,
+      mediaResponse.status,
+      null,
+    );
+  }
+
+  const arrayBuffer = await mediaResponse.arrayBuffer();
+  const contentType =
+    mediaResponse.headers.get("content-type") ||
+    "application/octet-stream";
+  const ext = contentType.includes("ogg")
+    ? "ogg"
+    : contentType.includes("mpeg") || contentType.includes("mp3")
+      ? "mp3"
+      : contentType.includes("mp4") || contentType.includes("m4a")
+        ? "m4a"
+        : contentType.includes("wav")
+          ? "wav"
+          : "bin";
+
+  return {
+    bytes: Buffer.from(arrayBuffer),
+    contentType,
+    filename: `${mediaId}.${ext}`,
   };
 }
 
@@ -493,6 +632,7 @@ export async function sendTextMessage(params: {
     text: params.text,
     timestamp: raw.created_at || new Date().toISOString(),
     status: mapStatus(raw.status) || "accepted",
+    kind: "text",
   };
 }
 

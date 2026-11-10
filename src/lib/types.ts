@@ -12,6 +12,22 @@ export type MessageStatus =
 
 export type ServiceWindowStatus = "open" | "closed";
 
+export type ChatMessageKind =
+  | "text"
+  | "audio"
+  | "image"
+  | "document"
+  | "interactive"
+  | "template"
+  | "other";
+
+export interface ChatMessageAudio {
+  mediaId: string;
+  mimeType?: string | null;
+  /** true = WhatsApp voice note recorded in chat */
+  voice: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -19,6 +35,8 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   status: MessageStatus;
+  kind: ChatMessageKind;
+  audio?: ChatMessageAudio;
   error?: string;
 }
 
