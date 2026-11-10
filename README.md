@@ -28,6 +28,7 @@ Set `BIRD_WHATSAPP_PHONE_NUMBER=+393337802795` so list/send calls scope to this 
 - Setup screen when `BIRD_API_KEY` is missing (no invented secrets)
 - **Offline sentiment browse** at [`/sentiment`](http://localhost:3200/sentiment) — charts + urgency callouts + filterable list from `data/sentiment.json` (no Bird API key)
 - **Select inbound message** → editable composer box; **voice notes / audio** download via Bird media API and transcribe with OpenAI Whisper (`language=it`)
+- **Claude reply agent** — classifies the box text, picks a template from `config/reply-templates.json`, fills slots (e.g. food ingredients → pranzo/cena ask), shows editable draft before Bird send
 
 ## Quick start
 
@@ -70,6 +71,18 @@ Create the key with at least **`whatsapp:write`** for the live inbox. Workspace 
 
 Requires `OPENAI_API_KEY` in `.env.local` for step 4. Without it, text selection still works; audio shows a clear missing-key error.
 
+### Claude reply agent (templates)
+
+1. Put inbound text in the composer (select message or after Whisper).
+2. Click **Suggerisci risposta (Claude)**.
+3. Claude Haiku (`claude-haiku-4-5` by default) chooses a template from `config/reply-templates.json` and fills slots.
+4. The composer shows the draft (editable). Review, then **Send** via Bird.
+
+Example food flow: inbound “pomodori, mozzarella, basilico, olio” → template `food_ingredients_meal` →  
+“Hai elencato questi ingredienti: pomodori, mozzarella, basilico, olio. Vuoi che ti prepari il pranzo o la cena…?”
+
+Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `when_to_use`, `body` with `{{slots}}`). Requires `ANTHROPIC_API_KEY`.
+
 ## Environment variables
 
 | Variable | Required | Purpose |
@@ -84,6 +97,8 @@ Requires `OPENAI_API_KEY` in `.env.local` for step 4. Without it, text selection
 | `OPENAI_API_KEY` | for voice STT | Whisper transcription of inbound audio |
 | `OPENAI_TRANSCRIBE_MODEL` | no | default `whisper-1` |
 | `OPENAI_TRANSCRIBE_LANGUAGE` | no | default `it` (Italian) |
+| `ANTHROPIC_API_KEY` | for reply agent | Claude Messages API |
+| `ANTHROPIC_MODEL` | no | default `claude-haiku-4-5` (Haiku 4.5 routing) |
 
 **Never commit real keys.** `.env*` is gitignored except `.env.example`.
 
@@ -97,6 +112,7 @@ Requires `OPENAI_API_KEY` in `.env.local` for step 4. Without it, text selection
 | `GET` | `/api/conversations/:id/messages` | Thread (Bird) |
 | `POST` | `/api/messages` | `{ conversationId, text }` send via Bird |
 | `POST` | `/api/messages/transcribe` | `{ messageId, mediaId }` → Whisper text |
+| `GET`/`POST` | `/api/messages/suggest-reply` | Claude template pick → `{ suggestion.draft }` |
 | `POST` | `/api/webhook` | Optional Bird event receiver |
 
 ## Realtime: polling vs webhooks
@@ -111,6 +127,9 @@ Free-form replies require an open **24-hour customer service window**. Outside t
 ```
 src/lib/bird.ts              Bird REST client + media download (server-only)
 src/lib/transcribe.ts        Bird media → OpenAI Whisper
+src/lib/reply-agent.ts       Claude template router
+src/lib/reply-templates.ts   Load/render config/reply-templates.json
+config/reply-templates.json  Editable reply templates (no code change to add)
 src/lib/sentiment.ts         Sentiment types / label helpers
 data/sentiment.json          Offline sentiment snapshot (no Bird calls)
 src/app/api/                 Next.js Route Handlers

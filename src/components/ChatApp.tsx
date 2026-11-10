@@ -27,6 +27,8 @@ export function ChatApp() {
     null,
   );
   const [transcribing, setTranscribing] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestionMeta, setSuggestionMeta] = useState<string | null>(null);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId),
@@ -104,11 +106,14 @@ export function ChatApp() {
     setSelectedMessage(null);
     setDraft("");
     setTranscribing(false);
+    setSuggesting(false);
+    setSuggestionMeta(null);
   }, [status?.configured, selectedId, loadMessages]);
 
   async function handleSelectMessage(message: ChatMessage) {
     if (message.direction !== "inbound") return;
     setSelectedMessage(message);
+    setSuggestionMeta(null);
     setError(null);
 
     if (message.kind === "audio" && message.audio?.mediaId) {
@@ -161,6 +166,59 @@ export function ChatApp() {
     }
   }
 
+  async function handleSuggestReply() {
+    const text = draft.trim();
+    if (!text || suggesting || transcribing) return;
+    setSuggesting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/messages/suggest-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = (await res.json()) as {
+        suggestion?: {
+          draft?: string;
+          templateId?: string;
+          templateLabel?: string;
+          rationale?: string;
+          intentSummary?: string;
+          model?: string;
+        };
+        error?: { message?: string };
+      };
+      if (!res.ok) {
+        setError(
+          data.error?.message ||
+            `Suggest reply failed (HTTP ${res.status})`,
+        );
+        return;
+      }
+      const suggestion = data.suggestion;
+      if (!suggestion?.draft) {
+        setError("Claude returned an empty draft");
+        return;
+      }
+      setDraft(suggestion.draft);
+      setSuggestionMeta(
+        [
+          suggestion.templateLabel || suggestion.templateId,
+          suggestion.intentSummary,
+          suggestion.model ? `model ${suggestion.model}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Suggest reply failed",
+      );
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
   async function handleSend(text: string) {
     if (!selectedId) return;
     setSending(true);
@@ -196,6 +254,7 @@ export function ChatApp() {
       } else {
         setDraft("");
         setSelectedMessage(null);
+        setSuggestionMeta(null);
       }
       await Promise.all([loadMessages(selectedId), loadConversations()]);
     } catch (err) {
@@ -229,8 +288,8 @@ export function ChatApp() {
           saving.
         </p>
         <p className="hint">
-          Per trascivere i vocali serve anche{" "}
-          <code>OPENAI_API_KEY</code> (Whisper). Sentiment browse (offline):{" "}
+          Vocali: <code>OPENAI_API_KEY</code> (Whisper). Suggerimenti risposta:{" "}
+          <code>ANTHROPIC_API_KEY</code> (Claude). Sentiment:{" "}
           <Link href="/sentiment">/sentiment</Link>
         </p>
         {error ? (
@@ -284,16 +343,30 @@ export function ChatApp() {
         <Composer
           disabled={!selectedId}
           sending={sending}
+          suggesting={suggesting}
           windowClosed={selected?.serviceWindowStatus === "closed"}
           text={draft}
-          onTextChange={setDraft}
+          onTextChange={(value) => {
+            setDraft(value);
+            if (suggestionMeta) setSuggestionMeta(null);
+          }}
           selectedLabel={selectedLabel}
-          statusLabel={transcribing ? "Trascrizione…" : null}
+          statusLabel={
+            transcribing
+              ? "Trascrizione…"
+              : suggesting
+                ? "Claude sta scegliendo un template…"
+                : null
+          }
+          suggestionMeta={suggestionMeta}
           onClearSelection={() => {
             setSelectedMessage(null);
             setDraft("");
             setTranscribing(false);
+            setSuggesting(false);
+            setSuggestionMeta(null);
           }}
+          onSuggestReply={handleSuggestReply}
           onSend={handleSend}
         />
       </section>
