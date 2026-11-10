@@ -1,0 +1,348 @@
+{
+  "meta": {
+    "title": "Sentiment analysis — WhatsApp Bird CodeNinja",
+    "phoneName": "CodeNinja",
+    "phone": "+393337802795",
+    "numberId": "wan_01m5n2ffp9e019bnda2e60s4z9",
+    "analyzedAt": "2026-11-10",
+    "language": "it",
+    "source": "docs/bird-chat-sentiment-report.md",
+    "conversationsListed": 50,
+    "deepAnalyzedApprox": 30,
+    "headline": "Inbox CodeNinja: tono complessivo neutro–positivo, poche urgenze.",
+    "notes": [
+      "Classificazione qualitativa (non ML): priorità al tono del contatto.",
+      "Retention Bird 30 giorni; media/audio non trascritti.",
+      "Nessuna chiamata Bird API richiesta per questa pagina."
+    ]
+  },
+  "distribution": [
+    { "label": "positive", "count": 10, "pct": 33 },
+    { "label": "neutral", "count": 10, "pct": 33 },
+    { "label": "mixed", "count": 7, "pct": 23 },
+    { "label": "negative", "count": 2, "pct": 5 },
+    { "label": "insufficient", "count": 4, "pct": 10 }
+  ],
+  "urgentIds": [
+    "francesco-orlando",
+    "lorenzo-santucci",
+    "maura-donati",
+    "giulia-nerli",
+    "nicco"
+  ],
+  "topPositiveIds": [
+    "rossana-fulgenzi",
+    "loris-pagotto",
+    "federico",
+    "marta",
+    "ale"
+  ],
+  "themesRecurring": [
+    "Demo e skill Fiammetta",
+    "Operatività CodeNinja",
+    "Logistica personale/familiare",
+    "Urgenza operativa (più che rabbia)"
+  ],
+  "conversations": [
+    {
+      "id": "maura-donati",
+      "contact": "Maura Donati",
+      "phone": "+39347***0800",
+      "label": "mixed",
+      "urgent": true,
+      "urgencyRank": 3,
+      "rationale": "Relazione familiare operativa e collaborativa (“Grazie”, stampe, curriculum), ma stress espliciti (Fipili “inferno”, multa/power bank Niccolò, carico scuola).",
+      "themes": ["famiglia", "scuola", "tasse uni", "stampe", "logistica"]
+    },
+    {
+      "id": "giulia-nerli",
+      "contact": "Giulia Nerli",
+      "phone": "+39334***3516",
+      "label": "mixed",
+      "urgent": true,
+      "urgencyRank": 4,
+      "rationale": "Collaborazione CodeNinja positiva e propositiva; messaggio lungo del 9/11 con umore basso per recupero infortunio e bisogno di riprendere attività agenzie.",
+      "themes": ["commerciale", "sito", "recovery personale", "webinar"]
+    },
+    {
+      "id": "antonio-bertini",
+      "contact": "Antonio Bertini",
+      "phone": "+39331***1406",
+      "label": "neutral",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Tono professionale; segnala urgenze commerciali (Fuochi, gare, partner) senza polemica verso Andrea.",
+      "themes": ["gare", "partner", "anagrafica articoli"]
+    },
+    {
+      "id": "marta",
+      "contact": "Marta",
+      "phone": "+39333***3856",
+      "label": "positive",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Affetto, umorismo, interesse verso lavoro/Claude/presentazioni (“Bello!!!”, “Utile!”).",
+      "themes": ["personale", "AI", "appuntamenti"]
+    },
+    {
+      "id": "nicco",
+      "contact": "Nicco",
+      "phone": "+39340***8413",
+      "label": "mixed",
+      "urgent": true,
+      "urgencyRank": 5,
+      "rationale": "Lavoro sito/pagine con feedback positivo; pressione su follow-up politico, freddo in casa, gomme motorino.",
+      "themes": ["lavoro CodeNinja", "logistica casa/auto", "networking"]
+    },
+    {
+      "id": "massimiliano-baldisseri",
+      "contact": "Massimiliano Baldisseri",
+      "phone": "+39335***5835",
+      "label": "positive",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Tono amichevole (“Ci vediamo lunedì con scatola!”), reminder AI Calandrino leggero.",
+      "themes": ["notebook/scatola", "social"]
+    },
+    {
+      "id": "ld",
+      "contact": "LD",
+      "phone": "+39334***7781",
+      "label": "mixed",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Collaborazione ambiziosa e tecnica; frustrazione settoriale (Var Group), umorismo grezzo, reazione 😢 su media.",
+      "themes": ["business", "prodotti web", "networking"]
+    },
+    {
+      "id": "francesco-audio",
+      "contact": "Francesco",
+      "phone": "+39333***7144",
+      "label": "insufficient",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Solo 2 audio inbound, nessun testo.",
+      "themes": ["audio"]
+    },
+    {
+      "id": "rossana-fulgenzi",
+      "contact": "Rossana Fulgenzi",
+      "phone": "+39388***8756",
+      "label": "positive",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Complimenti espliciti a Fiammetta (“sei diventata bravissima”), call di lavoro cordiali.",
+      "themes": ["demo AI", "menù", "meeting Massimiliano"]
+    },
+    {
+      "id": "francesco-orlando",
+      "contact": "Francesco Orlando",
+      "phone": "+39345***6488",
+      "label": "negative",
+      "urgent": true,
+      "urgencyRank": 1,
+      "rationale": "“Ho bisogno di parlarti molto urgentemente”; follow-up su agenda/Marcello.",
+      "themes": ["urgenza chiamata", "agenda"]
+    },
+    {
+      "id": "mervana",
+      "contact": "Mervana",
+      "phone": "+39351***6179",
+      "label": "neutral",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Richieste WFH educate, umorismo, logistica Tecna (neutro–positivo).",
+      "themes": ["smart working", "trasferte"]
+    },
+    {
+      "id": "lorenzo-santucci",
+      "contact": "Lorenzo Santucci",
+      "phone": "+39393***3435",
+      "label": "mixed",
+      "urgent": true,
+      "urgencyRank": 2,
+      "rationale": "Allineamenti bandi/NIS2; “temporeggiando con Ersu”, scadenze sopralluoghi (pressione compliance).",
+      "themes": ["NIS2", "SIVAT", "bandi"]
+    },
+    {
+      "id": "claudia-bencini",
+      "contact": "Claudia Bencini",
+      "phone": "+39335***4815",
+      "label": "neutral",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Richiede contatto; Andrea rimanda senza urgenza.",
+      "themes": ["call"]
+    },
+    {
+      "id": "niccolo-brocchi",
+      "contact": "Niccolò Brocchi",
+      "phone": "+39333***7478",
+      "label": "neutral",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Piano commerciale strutturato, reminder operativi.",
+      "themes": ["Kato", "Tecna", "webinar", "lead"]
+    },
+    {
+      "id": "neri",
+      "contact": "Neri",
+      "phone": "+39339***2193",
+      "label": "neutral",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Contatto freddo “Ciao Andrea” + risposta template.",
+      "themes": ["outreach"]
+    },
+    {
+      "id": "loris-pagotto",
+      "contact": "Loris Pagotto",
+      "phone": "+39348***5030",
+      "label": "positive",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Interesse demo WhatsApp+AI, “Perfetto, grazie”, richiesta materiali.",
+      "themes": ["Imer/ORU", "Copilot", "Fiammetta"]
+    },
+    {
+      "id": "rob",
+      "contact": "rob",
+      "phone": "+39392***7588",
+      "label": "mixed",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Audio inbound; risposta Andrea su indisponibilità computer / vincoli supply.",
+      "themes": ["hardware"]
+    },
+    {
+      "id": "donati-mauro",
+      "contact": "donati mauro",
+      "phone": "+39380***3309",
+      "label": "positive",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Playful cooking con Fiammetta (pesce, ingredienti).",
+      "themes": ["demo AI cucina"]
+    },
+    {
+      "id": "marcello",
+      "contact": "Marcello",
+      "phone": "+39348***9911",
+      "label": "mixed",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Logistica ok (“Arrivo”); stress familiare ospedale (figlio Massimo).",
+      "themes": ["famiglia", "meeting Rossana"]
+    },
+    {
+      "id": "stefano-frilli",
+      "contact": "Stefano Frilli – Verisure",
+      "phone": "+39393***7857",
+      "label": "neutral",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Appuntamento tecnico allarme.",
+      "themes": ["Verisure"]
+    },
+    {
+      "id": "federico",
+      "contact": "Federico",
+      "phone": "+39348***2030",
+      "label": "positive",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "“promettente..”; conferma corso AI.",
+      "themes": ["formazione AI", "Fiammetta"]
+    },
+    {
+      "id": "manuelvescovi",
+      "contact": "Manuelvescovi",
+      "phone": "+39348***1383",
+      "label": "neutral",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Registrazione/ZoWorking; parte media non leggibile.",
+      "themes": ["appuntamenti"]
+    },
+    {
+      "id": "emma",
+      "contact": "emma",
+      "phone": "+39377***2307",
+      "label": "positive",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Demo ricette Fiammetta.",
+      "themes": ["cucina AI"]
+    },
+    {
+      "id": "nadia",
+      "contact": "Nadia",
+      "phone": "+39320***0707",
+      "label": "mixed",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Assenza malattia (“nn sto molto bene”); risposta empatica; menù/calendario.",
+      "themes": ["malattia", "HR"]
+    },
+    {
+      "id": "ale",
+      "contact": "Ale",
+      "phone": "+39338***8816",
+      "label": "positive",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Umorismo su Fiammetta/Maura; Surface e Teams ok.",
+      "themes": ["personale/lavoro"]
+    },
+    {
+      "id": "fabio-oru",
+      "contact": "Fabio @Le Officine Riunite",
+      "phone": "+39347***3763",
+      "label": "neutral",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Solo “Ciao ciao”.",
+      "themes": ["ping"]
+    },
+    {
+      "id": "uk-unsupported",
+      "contact": "+44797***5007",
+      "phone": "UK",
+      "label": "insufficient",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Solo messaggi unsupported.",
+      "themes": ["n/d"]
+    },
+    {
+      "id": "us-unsupported",
+      "contact": "+1866***7520",
+      "phone": "US",
+      "label": "insufficient",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Solo unsupported (probabile spam/sistema).",
+      "themes": ["n/d"]
+    },
+    {
+      "id": "andrea-self",
+      "contact": "AndreaPecci63 (self)",
+      "phone": "+39333***2795",
+      "label": "neutral",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Loop di test Fiammetta / menù.",
+      "themes": ["test inbox"]
+    },
+    {
+      "id": "unknown-outreach",
+      "contact": "+39342***3189",
+      "phone": "—",
+      "label": "neutral",
+      "urgent": false,
+      "urgencyRank": null,
+      "rationale": "Outreach “Giulia come stai?” + link demo; poca risposta.",
+      "themes": ["outreach"]
+    }
+  ]
+}
