@@ -26,6 +26,7 @@ Set `BIRD_WHATSAPP_PHONE_NUMBER=+393337802795` so list/send calls scope to this 
 - Send text via `POST /v1/whatsapp/messages` (`from` = CodeNinja E.164)
 - Optional webhook receiver at `/api/webhook` (scaffold acknowledges; UI polls)
 - Setup screen when `BIRD_API_KEY` is missing (no invented secrets)
+- **Offline sentiment browse** at [`/sentiment`](http://localhost:3200/sentiment) — charts + urgency callouts + filterable list from `data/sentiment.json` (no Bird API key)
 
 ## Quick start
 
@@ -38,9 +39,26 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3200](http://localhost:3200).
+Open [http://localhost:3200](http://localhost:3200) for the live Bird inbox.
 
-Create the key with at least **`whatsapp:write`**. Workspace keys use `bk_{region}_…`; the app derives `https://{region}.platform.bird.com` when `BIRD_API_BASE_URL` is omitted.
+### Sentiment UI (offline, no API key)
+
+```bash
+npm install
+npm run dev
+```
+
+Then open **[http://localhost:3200/sentiment](http://localhost:3200/sentiment)**.
+
+The page reads committed static data in `data/sentiment.json` (derived from the project sentiment markdown report). You get:
+
+1. Donut + bar distribution (positive / neutral / negative / mixed / insufficient)
+2. Visual urgency callouts for negative / urgent chats
+3. Searchable / filterable conversation table (label, contact, theme)
+
+No `BIRD_API_KEY` is required for `/sentiment`.
+
+Create the key with at least **`whatsapp:write`** for the live inbox. Workspace keys use `bk_{region}_…`; the app derives `https://{region}.platform.bird.com` when `BIRD_API_BASE_URL` is omitted.
 
 ## Environment variables
 
@@ -77,9 +95,12 @@ Free-form replies require an open **24-hour customer service window**. Outside t
 ## Project layout
 
 ```
-src/lib/bird.ts          Bird REST client (server-only)
-src/app/api/             Next.js Route Handlers
-src/components/          Inbox, Thread, Composer
+src/lib/bird.ts              Bird REST client (server-only)
+src/lib/sentiment.ts         Sentiment types / label helpers
+data/sentiment.json          Offline sentiment snapshot (no Bird calls)
+src/app/api/                 Next.js Route Handlers
+src/app/sentiment/           Offline sentiment charts + browse UI
+src/components/              Inbox, Thread, Composer, SentimentView
 ```
 
 ## Related PRs

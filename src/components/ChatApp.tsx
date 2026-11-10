@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Composer } from "./Composer";
 import { Inbox } from "./Inbox";
@@ -161,6 +162,10 @@ export function ChatApp() {
           <code>whatsapp:write</code>. Restart <code>npm run dev</code> after
           saving.
         </p>
+        <p className="hint">
+          Sentiment browse (offline, no API key):{" "}
+          <Link href="/sentiment">/sentiment</Link>
+        </p>
         {error ? (
           <p className="banner-error" role="alert">
             {error}
@@ -178,6 +183,8 @@ export function ChatApp() {
           <p className="muted">
             Bird · CodeNinja
             {status?.phoneNumber ? ` · ${status.phoneNumber}` : ""}
+            {" · "}
+            <Link href="/sentiment">Sentiment</Link>
           </p>
         </header>
         <Inbox
