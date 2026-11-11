@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Composer } from "./Composer";
 import { Inbox } from "./Inbox";
 import { MemoryPanel } from "./MemoryPanel";
@@ -22,6 +22,42 @@ const INTERVAL =
 /** Ollama health poll — lighter than inbox polling. */
 const OLLAMA_HEALTH_MS = 15000;
 
+/** Templates safe to apply without a manual Suggerisci click. */
+const AUTO_DRAFT_TEMPLATE_IDS = new Set(["food_ingredients_meal"]);
+
+function findLatestInbound(messages: ChatMessage[]): ChatMessage | null {
+  let latest: ChatMessage | null = null;
+  for (const message of messages) {
+    if (message.direction !== "inbound") continue;
+    if (!latest) {
+      latest = message;
+      continue;
+    }
+    const a = Date.parse(message.timestamp);
+    const b = Date.parse(latest.timestamp);
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      if (a >= b) latest = message;
+    } else {
+      // Fallback: list is chronological oldest → newest.
+      latest = message;
+    }
+  }
+  return latest;
+}
+
+function inboundComposerText(message: ChatMessage): string {
+  if (message.kind === "text") return message.text.trim();
+  const stripped = message.text.replace(/^\[.*?\]\s*/, "").trim();
+  if (stripped.startsWith("[")) return "";
+  return stripped;
+}
+
+function shortPreview(text: string, max = 48): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  if (oneLine.length <= max) return oneLine;
+  return `${oneLine.slice(0, max - 1)}…`;
+}
+
 export function ChatApp() {
   const [status, setStatus] = useState<BirdConfigStatus | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -35,11 +71,19 @@ export function ChatApp() {
   );
   const [transcribing, setTranscribing] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
+  const [suggestSource, setSuggestSource] = useState<"auto" | "manual" | null>(
+    null,
+  );
   const [suggestionMeta, setSuggestionMeta] = useState<string | null>(null);
   const [ollamaHealth, setOllamaHealth] = useState<OllamaHealthView | null>(
     null,
   );
   const [ollamaChecking, setOllamaChecking] = useState(false);
+
+  /** Inbound message ids already auto-drafted (or skipped) — avoid poll loops. */
+  const autoHandledInboundIdRef = useRef<string | null>(null);
+  /** Bumped on conversation change / clear so stale async work is ignored. */
+  const suggestGenerationRef = useRef(0);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId),
@@ -145,6 +189,8 @@ export function ChatApp() {
   }, [status?.configured, selectedId, loadConversations, loadMessages]);
 
   useEffect(() => {
+    autoHandledInboundIdRef.current = null;
+    suggestGenerationRef.current += 1;
     if (status?.configured && selectedId) {
       void loadMessages(selectedId);
     } else {
@@ -154,6 +200,7 @@ export function ChatApp() {
     setDraft("");
     setTranscribing(false);
     setSuggesting(false);
+    setSuggestSource(null);
     setSuggestionMeta(null);
   }, [status?.configured, selectedId, loadMessages]);
 
@@ -181,8 +228,14 @@ export function ChatApp() {
     }
   }
 
-  async function handleSelectMessage(message: ChatMessage) {
-    if (message.direction !== "inbound") return;
+  /**
+   * Select an inbound message into the composer (transcribe audio if needed).
+   * Returns the text placed in the box, or "" when nothing usable.
+   */
+  async function prepareInboundSelection(
+    message: ChatMessage,
+  ): Promise<string> {
+    if (message.direction !== "inbound") return "";
     setSelectedMessage(message);
     setSuggestionMeta(null);
     setError(null);
@@ -211,7 +264,7 @@ export function ChatApp() {
               `Transcription failed (HTTP ${res.status})`,
           );
           setDraft("");
-          return;
+          return "";
         }
         const transcribed = data.transcription?.text?.trim() || "";
         setDraft(transcribed);
@@ -222,22 +275,18 @@ export function ChatApp() {
             messageId: message.id,
           });
         }
+        return transcribed;
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Transcription failed",
         );
+        return "";
       } finally {
         setTranscribing(false);
       }
-      return;
     }
 
-    // Text (and other) inbound: put readable body in the editable box.
-    const text =
-      message.kind === "text"
-        ? message.text
-        : message.text.replace(/^\[.*?\]\s*/, "") || message.text;
-    const boxText = text.startsWith("[") ? "" : text;
+    const boxText = inboundComposerText(message);
     setDraft(boxText);
     if (boxText) {
       void rememberSnippet({
@@ -246,21 +295,37 @@ export function ChatApp() {
         messageId: message.id,
       });
     }
-    if (message.kind !== "text") {
+    if (message.kind !== "text" && message.kind !== "audio") {
       setError(
         `Messaggio ${message.kind}: nessun testo da copiare. Solo testo e audio/vocali sono supportati nel box.`,
       );
     }
+    return boxText;
   }
 
-  async function handleSuggestReply() {
-    const text = draft.trim();
+  async function handleSelectMessage(message: ChatMessage) {
+    if (message.direction !== "inbound") return;
+    // Manual select is an override: do not auto-re-run for this id.
+    autoHandledInboundIdRef.current = message.id;
+    suggestGenerationRef.current += 1;
+    await prepareInboundSelection(message);
+  }
+
+  async function runSuggestReply(params: {
+    text: string;
+    source: "auto" | "manual";
+    sourceMessage?: ChatMessage | null;
+    generation: number;
+  }) {
+    const text = params.text.trim();
     if (!text || suggesting || transcribing) return;
+
     setSuggesting(true);
+    setSuggestSource(params.source);
     setError(null);
     try {
-      // Refresh Ollama badge; block suggest only when reply provider is Ollama and unhealthy.
       const health = await loadOllamaHealth();
+      if (params.generation !== suggestGenerationRef.current) return;
       if (health?.provider === "ollama" && !health.ok) {
         setError(health.message);
         return;
@@ -286,6 +351,7 @@ export function ChatApp() {
         };
         error?: { message?: string; provider?: string };
       };
+      if (params.generation !== suggestGenerationRef.current) return;
       if (!res.ok) {
         setError(
           data.error?.message ||
@@ -298,9 +364,35 @@ export function ChatApp() {
         setError("Reply agent returned an empty draft");
         return;
       }
+
+      const templateId = suggestion.templateId || "";
+      const autoEligible = AUTO_DRAFT_TEMPLATE_IDS.has(templateId);
+      const preview = shortPreview(
+        params.sourceMessage
+          ? inboundComposerText(params.sourceMessage) || text
+          : text,
+      );
+
+      if (params.source === "auto" && !autoEligible) {
+        // Keep inbound text; do not overwrite with generic_ack.
+        setSuggestionMeta(
+          [
+            "Bozza automatica saltata",
+            preview ? `msg “${preview}”` : null,
+            suggestion.templateLabel || templateId || "generic",
+            "intent non riconosciuto — usa Suggerisci",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        );
+        return;
+      }
+
       setDraft(suggestion.draft);
       setSuggestionMeta(
         [
+          params.source === "auto" ? "Bozza automatica" : null,
+          preview ? `msg “${preview}”` : null,
           suggestion.provider,
           suggestion.templateLabel || suggestion.templateId,
           suggestion.intentSummary,
@@ -310,14 +402,62 @@ export function ChatApp() {
           .join(" · "),
       );
     } catch (err) {
+      if (params.generation !== suggestGenerationRef.current) return;
       setError(
         err instanceof Error ? err.message : "Suggest reply failed",
       );
     } finally {
-      setSuggesting(false);
+      if (params.generation === suggestGenerationRef.current) {
+        setSuggesting(false);
+        setSuggestSource(null);
+      }
       void loadOllamaHealth();
     }
   }
+
+  async function handleSuggestReply() {
+    const text = draft.trim();
+    if (!text) return;
+    const generation = ++suggestGenerationRef.current;
+    await runSuggestReply({
+      text,
+      source: "manual",
+      sourceMessage: selectedMessage,
+      generation,
+    });
+  }
+
+  async function runAutoDraft(message: ChatMessage) {
+    if (message.direction !== "inbound") return;
+    if (autoHandledInboundIdRef.current === message.id) return;
+    autoHandledInboundIdRef.current = message.id;
+    const generation = ++suggestGenerationRef.current;
+
+    const text = await prepareInboundSelection(message);
+    if (generation !== suggestGenerationRef.current) return;
+    if (!text.trim()) return;
+
+    await runSuggestReply({
+      text,
+      source: "auto",
+      sourceMessage: message,
+      generation,
+    });
+  }
+
+  // Auto-select latest inbound + draft when conversation opens or a new inbound arrives.
+  useEffect(() => {
+    if (!selectedId || messages.length === 0) return;
+    if (suggesting || transcribing || sending) return;
+
+    const latest = findLatestInbound(messages);
+    if (!latest) return;
+    if (autoHandledInboundIdRef.current === latest.id) return;
+
+    void runAutoDraft(latest);
+    // Intentionally omit runAutoDraft from deps — stable closure via refs/state above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- poll-driven; guard via autoHandledInboundIdRef
+  }, [messages, selectedId, suggesting, transcribing, sending]);
 
   async function handleSend(text: string) {
     if (!selectedId) return;
@@ -410,6 +550,14 @@ export function ChatApp() {
       : "testo"
     : null;
 
+  const statusLabel = transcribing
+    ? "Trascrizione…"
+    : suggesting
+      ? suggestSource === "auto"
+        ? "Bozza automatica…"
+        : "Reply agent sta scegliendo un template…"
+      : null;
+
   return (
     <div className="shell">
       <aside className="pane inbox-pane">
@@ -458,19 +606,16 @@ export function ChatApp() {
             if (suggestionMeta) setSuggestionMeta(null);
           }}
           selectedLabel={selectedLabel}
-          statusLabel={
-            transcribing
-              ? "Trascrizione…"
-              : suggesting
-                ? "Reply agent sta scegliendo un template…"
-                : null
-          }
+          statusLabel={statusLabel}
           suggestionMeta={suggestionMeta}
           onClearSelection={() => {
+            suggestGenerationRef.current += 1;
+            // Keep autoHandled id so poll does not immediately re-draft.
             setSelectedMessage(null);
             setDraft("");
             setTranscribing(false);
             setSuggesting(false);
+            setSuggestSource(null);
             setSuggestionMeta(null);
           }}
           onSuggestReply={handleSuggestReply}

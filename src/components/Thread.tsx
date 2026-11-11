@@ -54,8 +54,9 @@ export function Thread({
           {serviceWindowStatus ? ` · CS window: ${serviceWindowStatus}` : ""}
         </p>
         <p className="hint thread-hint">
-          Clicca un messaggio in ingresso per copiarlo nel box (i vocali vengono
-          trascritti).
+          L’ultimo messaggio in ingresso si seleziona da solo; se riconosciuto
+          (es. lista ingredienti) compare una bozza automatica. Clicca un altro
+          inbound per override (i vocali vengono trascritti).
         </p>
       </header>
       <div className="thread-messages" role="log" aria-live="polite">

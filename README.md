@@ -29,6 +29,7 @@ Set `BIRD_WHATSAPP_PHONE_NUMBER=+393337802795` so list/send calls scope to this 
 - **Offline sentiment browse** at [`/sentiment`](http://localhost:3200/sentiment) — charts + urgency callouts + filterable list from `data/sentiment.json` (no Bird API key)
 - **Select inbound message** → editable composer box; **voice notes / audio** download via Bird media API and transcribe with OpenAI Whisper (`language=it`)
 - **Reply agent (Claude or local Ollama)** — classifies the box text, picks a template from `config/reply-templates.json`, fills slots (e.g. food ingredients → pranzo/cena ask), shows editable draft before Bird send
+- **Auto-bozza ultimo inbound** — opening a chat (or a new inbound on poll) selects the latest inbound and, when the agent matches a food/pranzo|cena template, fills the composer draft; never auto-sends; **Suggerisci risposta** remains a manual override
 - **Local chat memory (LangChain + SQLite)** — per-contact facts + recent snippets in `.data/memory.sqlite` (no cloud keys); injected into suggest-reply; UI panel to view/edit / **Salva fatto**
 
 ## Quick start
@@ -74,10 +75,12 @@ Requires `OPENAI_API_KEY` in `.env.local` for step 4. Without it, text selection
 
 ### Reply agent (templates) — Claude or Ollama
 
-1. Put inbound text in the composer (select message or after Whisper).
-2. Click **Suggerisci risposta**.
+1. Put inbound text in the composer (select message or after Whisper), **or** open a chat and let auto-bozza run on the latest inbound.
+2. Click **Suggerisci risposta** for a manual override (any template, including generic ack).
 3. The active provider (`REPLY_PROVIDER`) chooses a template from `config/reply-templates.json` and fills slots.
-4. The composer shows the draft (editable). Review, then **Send** via Bird.
+4. The composer shows the draft (editable). Review, then **Send** via Bird — never auto-sent.
+
+**Auto-bozza:** on conversation open / new inbound (poll), the UI selects the latest inbound once per message id. If the agent matches `food_ingredients_meal`, the draft is applied with status “Bozza automatica…”. Generic fallbacks are not applied automatically (inbound text stays in the box).
 
 Example food flow: inbound “pomodori, mozzarella, basilico, olio” → template `food_ingredients_meal` →  
 “Hai elencato questi ingredienti: pomodori, mozzarella, basilico, olio. Vuoi che ti prepari il pranzo o la cena…?”
