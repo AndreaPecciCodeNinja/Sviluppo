@@ -185,7 +185,7 @@ src/lib/bird.ts              Bird REST client + media download (server-only)
 src/lib/transcribe.ts        Bird media → OpenAI Whisper
 src/lib/reply-agent.ts       Claude / Ollama template router (+ memory inject)
 src/lib/reply-templates.ts   Load/render config/reply-templates.json
-src/lib/memory/              LangChain SQLite history + facts store
+src/lib/memory/              SQLite facts/snippets + LangChain-compatible history adapter
 config/reply-templates.json  Editable reply templates (no code change to add)
 .data/memory.sqlite          Local memory DB (gitignored, created at runtime)
 src/lib/sentiment.ts         Sentiment types / label helpers

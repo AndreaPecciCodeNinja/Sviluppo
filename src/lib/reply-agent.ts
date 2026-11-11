@@ -71,104 +71,8 @@ export function getReplyAgentStatus() {
   };
 }
 
-export type OllamaHealth = {
-  provider: ReplyProvider;
-  /** True when REPLY_PROVIDER=ollama (reply agent will use Ollama). */
-  active: boolean;
-  reachable: boolean;
-  model: string;
-  baseUrl: string;
-  modelPresent: boolean;
-  availableModels: string[];
-  /** Reachable and configured model is installed. */
-  ok: boolean;
-  message: string;
-};
-
-function modelMatches(requested: string, installedName: string): boolean {
-  if (installedName === requested) return true;
-  // Ollama sometimes lists tags as name:tag; allow prefix match on family.
-  return (
-    installedName.startsWith(`${requested}-`) ||
-    installedName.startsWith(`${requested}:`)
-  );
-}
-
-/**
- * Lightweight Ollama probe: always hits GET /api/tags on OLLAMA_BASE_URL,
- * regardless of REPLY_PROVIDER (so the UI badge is always meaningful).
- */
-export async function checkOllamaHealth(): Promise<OllamaHealth> {
-  const provider = getReplyProvider();
-  const { baseUrl, model } = getOllamaConfig();
-  const active = provider === "ollama";
-
-  try {
-    const response = await fetch(`${baseUrl}/api/tags`, {
-      method: "GET",
-      cache: "no-store",
-      signal: AbortSignal.timeout(4000),
-    });
-    if (!response.ok) {
-      return {
-        provider,
-        active,
-        reachable: false,
-        model,
-        baseUrl,
-        modelPresent: false,
-        availableModels: [],
-        ok: false,
-        message: `Ollama non raggiungibile (HTTP ${response.status}) su ${baseUrl}`,
-      };
-    }
-    const body = (await response.json()) as {
-      models?: Array<{ name?: string; model?: string }>;
-    };
-    const availableModels = (body.models || [])
-      .map((m) => m.name || m.model || "")
-      .filter(Boolean);
-    const modelPresent = availableModels.some((name) =>
-      modelMatches(model, name),
-    );
-    if (!modelPresent) {
-      return {
-        provider,
-        active,
-        reachable: true,
-        model,
-        baseUrl,
-        modelPresent: false,
-        availableModels,
-        ok: false,
-        message: `Ollama raggiungibile, ma manca «${model}» — esegui: ollama pull ${model}`,
-      };
-    }
-    return {
-      provider,
-      active,
-      reachable: true,
-      model,
-      baseUrl,
-      modelPresent: true,
-      availableModels,
-      ok: true,
-      message: `Ollama disponibile · ${model}`,
-    };
-  } catch {
-    return {
-      provider,
-      active,
-      reachable: false,
-      model,
-      baseUrl,
-      modelPresent: false,
-      availableModels: [],
-      ok: false,
-      message: `Ollama non raggiungibile su ${baseUrl} — avvia l'app Ollama su Mac / controlla OLLAMA_BASE_URL`,
-    };
-  }
-}
+export type { OllamaHealth } from "./ollama-health";
+export { checkOllamaHealth } from "./ollama-health";
 
 function buildSystemPrompt(templates: ReplyTemplate[]): string {
   const catalog = templates.map((t) => ({
@@ -441,8 +345,9 @@ export async function suggestReplyFromText(
   const contactKey = options.contactKey?.trim() || "";
   let memoryBlock = "";
   if (contactKey) {
+    // Import store only — avoid barrel pull of optional LangChain history.
     const { buildMemoryPromptBlock, appendMessage } = await import(
-      "@/lib/memory"
+      "@/lib/memory/store"
     );
     memoryBlock = buildMemoryPromptBlock(contactKey);
     // Persist the inbound text we're classifying as a human snippet.
