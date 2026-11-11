@@ -266,6 +266,105 @@ button.bubble {
   min-height: 0;
 }
 
+.memory-panel {
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1.25rem 1rem;
+  background: var(--bg-elevated);
+  max-height: 28vh;
+  overflow: auto;
+}
+
+.memory-panel-header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.memory-key {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+}
+
+.memory-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.65rem 0 0.5rem;
+}
+
+.memory-btn {
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+}
+
+.memory-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.memory-refresh {
+  margin-top: 0;
+  font-size: 0.8rem;
+}
+
+.memory-error {
+  margin: 0.35rem 0;
+  color: #f0a0a0;
+  font-size: 0.8rem;
+}
+
+.memory-list {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.memory-item {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.memory-fact-text {
+  margin: 0;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.memory-item-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.memory-item-actions .linkish {
+  margin-top: 0;
+  font-size: 0.78rem;
+}
+
+.memory-edit-form textarea {
+  width: 100%;
+  resize: vertical;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+}
+
 .provider-badge {
   display: inline-flex;
   align-items: center;

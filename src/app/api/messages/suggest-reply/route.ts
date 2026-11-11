@@ -21,9 +21,13 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  let payload: { text?: string };
+  let payload: {
+    text?: string;
+    contactKey?: string;
+    conversationId?: string;
+  };
   try {
-    payload = (await request.json()) as { text?: string };
+    payload = (await request.json()) as typeof payload;
   } catch {
     return NextResponse.json(
       { error: { message: "Invalid JSON body" } },
@@ -65,7 +69,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const suggestion = await suggestReplyFromText(text);
+    const suggestion = await suggestReplyFromText(text, {
+      contactKey: payload.contactKey,
+      conversationId: payload.conversationId,
+    });
     return NextResponse.json({ suggestion });
   } catch (err) {
     const message =

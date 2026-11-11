@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Composer } from "./Composer";
 import { Inbox } from "./Inbox";
+import { MemoryPanel } from "./MemoryPanel";
 import {
   OllamaStatusBadge,
   type OllamaHealthView,
@@ -44,6 +45,9 @@ export function ChatApp() {
     () => conversations.find((c) => c.id === selectedId),
     [conversations, selectedId],
   );
+
+  /** Prefer E.164 phone; fall back to conversation id for SQLite memory key. */
+  const memoryContactKey = selected?.contactAddress || selectedId;
 
   const loadStatus = useCallback(async () => {
     try {
@@ -153,6 +157,30 @@ export function ChatApp() {
     setSuggestionMeta(null);
   }, [status?.configured, selectedId, loadMessages]);
 
+  async function rememberSnippet(params: {
+    role: "human" | "ai";
+    content: string;
+    messageId?: string;
+  }) {
+    if (!memoryContactKey || !params.content.trim()) return;
+    try {
+      await fetch("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "message",
+          contactKey: memoryContactKey,
+          conversationId: selectedId,
+          role: params.role,
+          content: params.content,
+          messageId: params.messageId,
+        }),
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+
   async function handleSelectMessage(message: ChatMessage) {
     if (message.direction !== "inbound") return;
     setSelectedMessage(message);
@@ -185,7 +213,15 @@ export function ChatApp() {
           setDraft("");
           return;
         }
-        setDraft(data.transcription?.text?.trim() || "");
+        const transcribed = data.transcription?.text?.trim() || "";
+        setDraft(transcribed);
+        if (transcribed) {
+          void rememberSnippet({
+            role: "human",
+            content: transcribed,
+            messageId: message.id,
+          });
+        }
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Transcription failed",
@@ -201,7 +237,15 @@ export function ChatApp() {
       message.kind === "text"
         ? message.text
         : message.text.replace(/^\[.*?\]\s*/, "") || message.text;
-    setDraft(text.startsWith("[") ? "" : text);
+    const boxText = text.startsWith("[") ? "" : text;
+    setDraft(boxText);
+    if (boxText) {
+      void rememberSnippet({
+        role: "human",
+        content: boxText,
+        messageId: message.id,
+      });
+    }
     if (message.kind !== "text") {
       setError(
         `Messaggio ${message.kind}: nessun testo da copiare. Solo testo e audio/vocali sono supportati nel box.`,
@@ -224,7 +268,11 @@ export function ChatApp() {
       const res = await fetch("/api/messages/suggest-reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          contactKey: memoryContactKey,
+          conversationId: selectedId,
+        }),
       });
       const data = (await res.json()) as {
         suggestion?: {
@@ -304,6 +352,7 @@ export function ChatApp() {
             : `Send failed (HTTP ${res.status})`,
         );
       } else {
+        void rememberSnippet({ role: "ai", content: text });
         setDraft("");
         setSelectedMessage(null);
         setSuggestionMeta(null);
@@ -426,6 +475,11 @@ export function ChatApp() {
           }}
           onSuggestReply={handleSuggestReply}
           onSend={handleSend}
+        />
+        <MemoryPanel
+          contactKey={memoryContactKey}
+          conversationId={selectedId}
+          draftText={draft}
         />
       </section>
     </div>
