@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getClaudeConfig, suggestReplyFromText } from "@/lib/reply-agent";
+import {
+  getReplyAgentStatus,
+  suggestReplyFromText,
+} from "@/lib/reply-agent";
 import { listReplyTemplates } from "@/lib/reply-templates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const { model, apiKey } = getClaudeConfig();
+  const status = getReplyAgentStatus();
   return NextResponse.json({
-    configured: Boolean(apiKey),
-    model,
+    ...status,
     templates: listReplyTemplates().map((t) => ({
       id: t.id,
       label: t.label,
@@ -42,13 +44,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!getClaudeConfig().apiKey) {
+  const status = getReplyAgentStatus();
+  if (!status.configured) {
     return NextResponse.json(
       {
         error: {
           message:
-            "Missing ANTHROPIC_API_KEY — set it in .env.local for Claude reply suggestions",
-          code: "missing_anthropic_api_key",
+            status.provider === "claude"
+              ? "Missing ANTHROPIC_API_KEY — set it in .env.local, or set REPLY_PROVIDER=ollama"
+              : "Reply provider is not configured",
+          code:
+            status.provider === "claude"
+              ? "missing_anthropic_api_key"
+              : "reply_provider_not_configured",
+          provider: status.provider,
         },
       },
       { status: 503 },
@@ -61,6 +70,17 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Suggest reply failed";
-    return NextResponse.json({ error: { message } }, { status: 502 });
+    const unreachable =
+      /ollama unreachable|cannot reach anthropic|econnrefused/i.test(message);
+    return NextResponse.json(
+      {
+        error: {
+          message,
+          code: unreachable ? "provider_unreachable" : "suggest_reply_failed",
+          provider: status.provider,
+        },
+      },
+      { status: unreachable ? 503 : 502 },
+    );
   }
 }

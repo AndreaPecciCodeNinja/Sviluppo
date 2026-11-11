@@ -44,7 +44,7 @@ export function Composer({
     : statusLabel
       ? statusLabel
       : suggesting
-        ? "Claude sta scegliendo un template…"
+        ? "Reply agent sta scegliendo un template…"
         : windowClosed
           ? "Finestra 24h chiusa / window closed — serve inbound o template Bird"
           : "Type a reply — or click an inbound message, then Suggerisci risposta…";
@@ -65,7 +65,7 @@ export function Composer({
               onClick={() => void onSuggestReply()}
               disabled={disabled || busy || sending || !text.trim()}
             >
-              {suggesting ? "Claude…" : "Suggerisci risposta (Claude)"}
+              {suggesting ? "Suggerisco…" : "Suggerisci risposta"}
             </button>
           ) : null}
           {selectedLabel && onClearSelection ? (

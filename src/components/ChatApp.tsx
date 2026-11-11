@@ -185,8 +185,9 @@ export function ChatApp() {
           rationale?: string;
           intentSummary?: string;
           model?: string;
+          provider?: string;
         };
-        error?: { message?: string };
+        error?: { message?: string; provider?: string };
       };
       if (!res.ok) {
         setError(
@@ -197,12 +198,13 @@ export function ChatApp() {
       }
       const suggestion = data.suggestion;
       if (!suggestion?.draft) {
-        setError("Claude returned an empty draft");
+        setError("Reply agent returned an empty draft");
         return;
       }
       setDraft(suggestion.draft);
       setSuggestionMeta(
         [
+          suggestion.provider,
           suggestion.templateLabel || suggestion.templateId,
           suggestion.intentSummary,
           suggestion.model ? `model ${suggestion.model}` : null,
@@ -288,8 +290,8 @@ export function ChatApp() {
           saving.
         </p>
         <p className="hint">
-          Vocali: <code>OPENAI_API_KEY</code> (Whisper). Suggerimenti risposta:{" "}
-          <code>ANTHROPIC_API_KEY</code> (Claude). Sentiment:{" "}
+          Vocali: <code>OPENAI_API_KEY</code>. Reply agent:{" "}
+          <code>REPLY_PROVIDER=ollama|claude</code>. Sentiment:{" "}
           <Link href="/sentiment">/sentiment</Link>
         </p>
         {error ? (
@@ -355,7 +357,7 @@ export function ChatApp() {
             transcribing
               ? "Trascrizione…"
               : suggesting
-                ? "Claude sta scegliendo un template…"
+                ? "Reply agent sta scegliendo un template…"
                 : null
           }
           suggestionMeta={suggestionMeta}
