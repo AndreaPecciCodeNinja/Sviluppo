@@ -26,8 +26,9 @@ type ModelChoice = {
 };
 
 export function getReplyProvider(): ReplyProvider {
-  const raw = (process.env.REPLY_PROVIDER || "claude").trim().toLowerCase();
-  return raw === "ollama" ? "ollama" : "claude";
+  // Default ollama for local Mac/dev; set REPLY_PROVIDER=claude to use Anthropic.
+  const raw = (process.env.REPLY_PROVIDER || "ollama").trim().toLowerCase();
+  return raw === "claude" ? "claude" : "ollama";
 }
 
 export function getClaudeConfig() {
@@ -72,13 +73,14 @@ export function getReplyAgentStatus() {
 
 export type OllamaHealth = {
   provider: ReplyProvider;
-  /** True only when REPLY_PROVIDER=ollama */
+  /** True when REPLY_PROVIDER=ollama (reply agent will use Ollama). */
   active: boolean;
   reachable: boolean;
   model: string;
   baseUrl: string;
   modelPresent: boolean;
   availableModels: string[];
+  /** Reachable and configured model is installed. */
   ok: boolean;
   message: string;
 };
@@ -93,26 +95,13 @@ function modelMatches(requested: string, installedName: string): boolean {
 }
 
 /**
- * Lightweight Ollama probe: GET /api/tags on OLLAMA_BASE_URL.
- * Used for UI badge and optional pre-suggest checks.
+ * Lightweight Ollama probe: always hits GET /api/tags on OLLAMA_BASE_URL,
+ * regardless of REPLY_PROVIDER (so the UI badge is always meaningful).
  */
 export async function checkOllamaHealth(): Promise<OllamaHealth> {
   const provider = getReplyProvider();
   const { baseUrl, model } = getOllamaConfig();
-
-  if (provider !== "ollama") {
-    return {
-      provider,
-      active: false,
-      reachable: false,
-      model,
-      baseUrl,
-      modelPresent: false,
-      availableModels: [],
-      ok: false,
-      message: `Reply provider is ${provider} (Ollama badge inactive)`,
-    };
-  }
+  const active = provider === "ollama";
 
   try {
     const response = await fetch(`${baseUrl}/api/tags`, {
@@ -123,7 +112,7 @@ export async function checkOllamaHealth(): Promise<OllamaHealth> {
     if (!response.ok) {
       return {
         provider,
-        active: true,
+        active,
         reachable: false,
         model,
         baseUrl,
@@ -145,19 +134,19 @@ export async function checkOllamaHealth(): Promise<OllamaHealth> {
     if (!modelPresent) {
       return {
         provider,
-        active: true,
+        active,
         reachable: true,
         model,
         baseUrl,
         modelPresent: false,
         availableModels,
         ok: false,
-        message: `Ollama attivo, ma manca il modello «${model}» — esegui: ollama pull ${model}`,
+        message: `Ollama raggiungibile, ma manca «${model}» — esegui: ollama pull ${model}`,
       };
     }
     return {
       provider,
-      active: true,
+      active,
       reachable: true,
       model,
       baseUrl,
@@ -169,14 +158,14 @@ export async function checkOllamaHealth(): Promise<OllamaHealth> {
   } catch {
     return {
       provider,
-      active: true,
+      active,
       reachable: false,
       model,
       baseUrl,
       modelPresent: false,
       availableModels: [],
       ok: false,
-      message: `Ollama non raggiungibile su ${baseUrl} — avvia ollama serve / controlla OLLAMA_BASE_URL`,
+      message: `Ollama non raggiungibile su ${baseUrl} — avvia l'app Ollama su Mac / controlla OLLAMA_BASE_URL`,
     };
   }
 }

@@ -365,6 +365,13 @@ button.bubble {
   padding: 0.45rem 0.55rem;
 }
 
+.provider-badge-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 100%;
+}
+
 .provider-badge {
   display: inline-flex;
   align-items: center;
@@ -376,6 +383,18 @@ button.bubble {
   line-height: 1.3;
   border: 1px solid var(--border);
   max-width: 100%;
+  width: fit-content;
+}
+
+.provider-debug,
+.provider-setup {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.provider-setup code {
+  font-size: 0.7rem;
 }
 
 .provider-badge-meta {

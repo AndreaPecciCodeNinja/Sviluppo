@@ -110,7 +110,7 @@ OLLAMA_MODEL=qwen2.5:7b
 
 If Ollama is down or the model is missing, the UI shows a clear error (start Ollama / `ollama pull …`). No cloud API key needed for this path.
 
-When `REPLY_PROVIDER=ollama`, the thread pane shows a status pill above the chat: green **Ollama disponibile** when `GET /api/tags` succeeds and `OLLAMA_MODEL` is installed; amber warning otherwise. Health is checked on load, every ~15s (`GET /api/ollama/health`), and again before **Suggerisci risposta**.
+The thread toolbar **always** shows an Ollama status pill (even if `REPLY_PROVIDER=claude`): green **Ollama disponibile** when reachable + model installed; amber otherwise. A debug line shows `provider` / `reachable` / `model`. Health: on load, every ~15s (`GET /api/ollama/health` → Ollama `/api/tags`), and before **Suggerisci risposta**. Default `REPLY_PROVIDER` in `.env.example` is **ollama**.
 
 ### Local memory (LangChain + SQLite)
 
@@ -145,7 +145,7 @@ Plan: project store `docs/langchain-sqlite-memory-plan.md`.
 | `OPENAI_API_KEY` | for voice STT | Whisper transcription of inbound audio |
 | `OPENAI_TRANSCRIBE_MODEL` | no | default `whisper-1` |
 | `OPENAI_TRANSCRIBE_LANGUAGE` | no | default `it` (Italian) |
-| `REPLY_PROVIDER` | no | `claude` (default) or `ollama` |
+| `REPLY_PROVIDER` | no | `ollama` (default) or `claude` |
 | `ANTHROPIC_API_KEY` | when provider=claude | Claude Messages API |
 | `ANTHROPIC_MODEL` | no | default `claude-haiku-4-5` |
 | `OLLAMA_BASE_URL` | no | default `http://127.0.0.1:11434` |

@@ -259,9 +259,9 @@ export function ChatApp() {
     setSuggesting(true);
     setError(null);
     try {
-      // Refresh Ollama badge before suggest when that provider is active.
+      // Refresh Ollama badge; block suggest only when reply provider is Ollama and unhealthy.
       const health = await loadOllamaHealth();
-      if (health?.active && !health.ok) {
+      if (health?.provider === "ollama" && !health.ok) {
         setError(health.message);
         return;
       }
