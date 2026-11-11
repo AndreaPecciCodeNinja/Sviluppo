@@ -5,6 +5,8 @@ import {
   type ReplyTemplate,
 } from "./reply-templates";
 
+export type ReplyProvider = "claude" | "ollama";
+
 export type SuggestReplyResult = {
   draft: string;
   templateId: string;
@@ -12,21 +14,59 @@ export type SuggestReplyResult = {
   slots: Record<string, string>;
   rationale: string;
   model: string;
+  provider: ReplyProvider;
   intentSummary: string;
 };
 
-type ClaudeChoice = {
+type ModelChoice = {
   template_id?: string;
   slots?: Record<string, string>;
   rationale?: string;
   intent_summary?: string;
 };
 
+export function getReplyProvider(): ReplyProvider {
+  const raw = (process.env.REPLY_PROVIDER || "claude").trim().toLowerCase();
+  return raw === "ollama" ? "ollama" : "claude";
+}
+
 export function getClaudeConfig() {
   return {
     apiKey: process.env.ANTHROPIC_API_KEY?.trim() || "",
     // Fast routing model (alias → claude-haiku-4-5-20251001). Override with ANTHROPIC_MODEL.
     model: process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5",
+  };
+}
+
+export function getOllamaConfig() {
+  const base =
+    process.env.OLLAMA_BASE_URL?.trim().replace(/\/+$/, "") ||
+    "http://127.0.0.1:11434";
+  return {
+    baseUrl: base,
+    model: process.env.OLLAMA_MODEL?.trim() || "qwen2.5:7b",
+  };
+}
+
+export function getReplyAgentStatus() {
+  const provider = getReplyProvider();
+  if (provider === "ollama") {
+    const { baseUrl, model } = getOllamaConfig();
+    return {
+      provider,
+      configured: true,
+      model,
+      baseUrl,
+      missing: [] as string[],
+    };
+  }
+  const { apiKey, model } = getClaudeConfig();
+  return {
+    provider,
+    configured: Boolean(apiKey),
+    model,
+    baseUrl: null as string | null,
+    missing: apiKey ? [] : (["ANTHROPIC_API_KEY"] as string[]),
   };
 }
 
@@ -56,18 +96,35 @@ function buildSystemPrompt(templates: ReplyTemplate[]): string {
   ].join("\n");
 }
 
-function extractJsonObject(text: string): ClaudeChoice {
+function extractJsonObject(text: string, label: string): ModelChoice {
   const trimmed = text.trim();
   try {
-    return JSON.parse(trimmed) as ClaudeChoice;
+    return JSON.parse(trimmed) as ModelChoice;
   } catch {
     const start = trimmed.indexOf("{");
     const end = trimmed.lastIndexOf("}");
     if (start >= 0 && end > start) {
-      return JSON.parse(trimmed.slice(start, end + 1)) as ClaudeChoice;
+      return JSON.parse(trimmed.slice(start, end + 1)) as ModelChoice;
     }
-    throw new Error("Claude did not return valid JSON for template choice");
+    throw new Error(`${label} did not return valid JSON for template choice`);
   }
+}
+
+function isConnectionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  const cause = (err as Error & { cause?: { code?: string; message?: string } })
+    .cause;
+  const code = cause?.code?.toLowerCase() || "";
+  return (
+    code === "econnrefused" ||
+    code === "enotfound" ||
+    code === "econnreset" ||
+    code === "etimedout" ||
+    msg.includes("fetch failed") ||
+    msg.includes("econnrefused") ||
+    msg.includes("network")
+  );
 }
 
 async function callClaude(params: {
@@ -76,27 +133,37 @@ async function callClaude(params: {
   system: string;
   userText: string;
 }): Promise<string> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": params.apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: params.model,
-      max_tokens: 512,
-      temperature: 0,
-      system: params.system,
-      messages: [
-        {
-          role: "user",
-          content: `Inbound WhatsApp message to classify:\n"""\n${params.userText}\n"""`,
-        },
-      ],
-    }),
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": params.apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: params.model,
+        max_tokens: 512,
+        temperature: 0,
+        system: params.system,
+        messages: [
+          {
+            role: "user",
+            content: `Inbound WhatsApp message to classify:\n"""\n${params.userText}\n"""`,
+          },
+        ],
+      }),
+      cache: "no-store",
+    });
+  } catch (err) {
+    if (isConnectionError(err)) {
+      throw new Error(
+        "Cannot reach Anthropic API — check network connectivity",
+      );
+    }
+    throw err;
+  }
 
   const raw = await response.text();
   let body: unknown = raw;
@@ -128,41 +195,93 @@ async function callClaude(params: {
 }
 
 /**
- * Classify inbound text with Claude and render a preconfigured reply template.
+ * Ollama local chat API (`/api/chat`, non-streaming, JSON format).
+ * https://github.com/ollama/ollama/blob/main/docs/api.md
  */
-export async function suggestReplyFromText(
+async function callOllama(params: {
+  baseUrl: string;
+  model: string;
+  system: string;
+  userText: string;
+}): Promise<string> {
+  const url = `${params.baseUrl}/api/chat`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: params.model,
+        stream: false,
+        format: "json",
+        options: { temperature: 0 },
+        messages: [
+          { role: "system", content: params.system },
+          {
+            role: "user",
+            content: `Inbound WhatsApp message to classify:\n"""\n${params.userText}\n"""`,
+          },
+        ],
+      }),
+      cache: "no-store",
+    });
+  } catch (err) {
+    if (isConnectionError(err)) {
+      throw new Error(
+        `Ollama unreachable at ${params.baseUrl} — start Ollama (ollama serve), pull the model (ollama pull ${params.model}), and keep Next.js on the same machine. Check OLLAMA_BASE_URL.`,
+      );
+    }
+    throw err;
+  }
+
+  const raw = await response.text();
+  let body: unknown = raw;
+  try {
+    body = JSON.parse(raw) as unknown;
+  } catch {
+    /* keep text */
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof body === "object" &&
+      body &&
+      "error" in body &&
+      typeof (body as { error?: unknown }).error === "string"
+        ? (body as { error: string }).error
+        : `Ollama HTTP ${response.status} at ${url}`;
+    // Common: model not found
+    if (
+      typeof message === "string" &&
+      message.toLowerCase().includes("not found")
+    ) {
+      throw new Error(
+        `${message} — run: ollama pull ${params.model}`,
+      );
+    }
+    throw new Error(message);
+  }
+
+  const messageContent = (
+    body as { message?: { content?: string } }
+  ).message?.content;
+  if (!messageContent?.trim()) {
+    throw new Error("Ollama response had no message content");
+  }
+  return messageContent;
+}
+
+function renderChoice(
+  choice: ModelChoice,
   inboundText: string,
-): Promise<SuggestReplyResult> {
-  const text = inboundText.trim();
-  if (!text) {
-    throw new Error("Empty text — select a message or paste content first");
-  }
-
-  const { apiKey, model } = getClaudeConfig();
-  if (!apiKey) {
-    throw new Error(
-      "Missing ANTHROPIC_API_KEY — set it in .env.local for the Claude reply agent",
-    );
-  }
-
-  const templates = listReplyTemplates();
-  if (templates.length === 0) {
-    throw new Error("No reply templates configured in config/reply-templates.json");
-  }
-
-  const rawChoice = await callClaude({
-    apiKey,
-    model,
-    system: buildSystemPrompt(templates),
-    userText: text,
-  });
-  const choice = extractJsonObject(rawChoice);
-
+  model: string,
+  provider: ReplyProvider,
+): SuggestReplyResult {
   const templateId = choice.template_id?.trim() || "generic_ack";
   const template =
     getReplyTemplate(templateId) || getReplyTemplate("generic_ack");
   if (!template) {
-    throw new Error(`Unknown template_id from Claude: ${templateId}`);
+    throw new Error(`Unknown template_id from model: ${templateId}`);
   }
 
   const slots: Record<string, string> = {};
@@ -171,13 +290,12 @@ export async function suggestReplyFromText(
     slots[slot.name] = typeof value === "string" ? value.trim() : "";
   }
 
-  // Defensive: if food template but ingredients empty, try a naive comma join of lines.
   if (
     template.id === "food_ingredients_meal" &&
     !slots.ingredients &&
-    text.length > 0
+    inboundText.length > 0
   ) {
-    slots.ingredients = text
+    slots.ingredients = inboundText
       .split(/[\n,;•\-]+/)
       .map((p) => p.trim())
       .filter(Boolean)
@@ -192,5 +310,54 @@ export async function suggestReplyFromText(
     rationale: choice.rationale?.trim() || "",
     intentSummary: choice.intent_summary?.trim() || "",
     model,
+    provider,
   };
+}
+
+/**
+ * Classify inbound text with Claude or local Ollama and render a reply template.
+ */
+export async function suggestReplyFromText(
+  inboundText: string,
+): Promise<SuggestReplyResult> {
+  const text = inboundText.trim();
+  if (!text) {
+    throw new Error("Empty text — select a message or paste content first");
+  }
+
+  const templates = listReplyTemplates();
+  if (templates.length === 0) {
+    throw new Error("No reply templates configured in config/reply-templates.json");
+  }
+
+  const provider = getReplyProvider();
+  const system = buildSystemPrompt(templates);
+
+  if (provider === "ollama") {
+    const { baseUrl, model } = getOllamaConfig();
+    const rawChoice = await callOllama({
+      baseUrl,
+      model,
+      system,
+      userText: text,
+    });
+    const choice = extractJsonObject(rawChoice, "Ollama");
+    return renderChoice(choice, text, model, "ollama");
+  }
+
+  const { apiKey, model } = getClaudeConfig();
+  if (!apiKey) {
+    throw new Error(
+      "Missing ANTHROPIC_API_KEY — set it in .env.local, or set REPLY_PROVIDER=ollama for local Ollama",
+    );
+  }
+
+  const rawChoice = await callClaude({
+    apiKey,
+    model,
+    system,
+    userText: text,
+  });
+  const choice = extractJsonObject(rawChoice, "Claude");
+  return renderChoice(choice, text, model, "claude");
 }

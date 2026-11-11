@@ -28,7 +28,7 @@ Set `BIRD_WHATSAPP_PHONE_NUMBER=+393337802795` so list/send calls scope to this 
 - Setup screen when `BIRD_API_KEY` is missing (no invented secrets)
 - **Offline sentiment browse** at [`/sentiment`](http://localhost:3200/sentiment) — charts + urgency callouts + filterable list from `data/sentiment.json` (no Bird API key)
 - **Select inbound message** → editable composer box; **voice notes / audio** download via Bird media API and transcribe with OpenAI Whisper (`language=it`)
-- **Claude reply agent** — classifies the box text, picks a template from `config/reply-templates.json`, fills slots (e.g. food ingredients → pranzo/cena ask), shows editable draft before Bird send
+- **Reply agent (Claude or local Ollama)** — classifies the box text, picks a template from `config/reply-templates.json`, fills slots (e.g. food ingredients → pranzo/cena ask), shows editable draft before Bird send
 
 ## Quick start
 
@@ -71,17 +71,43 @@ Create the key with at least **`whatsapp:write`** for the live inbox. Workspace 
 
 Requires `OPENAI_API_KEY` in `.env.local` for step 4. Without it, text selection still works; audio shows a clear missing-key error.
 
-### Claude reply agent (templates)
+### Reply agent (templates) — Claude or Ollama
 
 1. Put inbound text in the composer (select message or after Whisper).
-2. Click **Suggerisci risposta (Claude)**.
-3. Claude Haiku (`claude-haiku-4-5` by default) chooses a template from `config/reply-templates.json` and fills slots.
+2. Click **Suggerisci risposta**.
+3. The active provider (`REPLY_PROVIDER`) chooses a template from `config/reply-templates.json` and fills slots.
 4. The composer shows the draft (editable). Review, then **Send** via Bird.
 
 Example food flow: inbound “pomodori, mozzarella, basilico, olio” → template `food_ingredients_meal` →  
 “Hai elencato questi ingredienti: pomodori, mozzarella, basilico, olio. Vuoi che ti prepari il pranzo o la cena…?”
 
-Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `when_to_use`, `body` with `{{slots}}`). Requires `ANTHROPIC_API_KEY`.
+Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `when_to_use`, `body` with `{{slots}}`).
+
+#### Provider: Claude (default)
+
+```env
+REPLY_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-…
+ANTHROPIC_MODEL=claude-haiku-4-5
+```
+
+#### Provider: local Ollama
+
+Same machine as Next.js (port 3200):
+
+```bash
+ollama pull qwen2.5:7b
+# ensure the daemon is up (often automatic as a service)
+ollama serve
+```
+
+```env
+REPLY_PROVIDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5:7b
+```
+
+If Ollama is down or the model is missing, the UI shows a clear error (start Ollama / `ollama pull …`). No cloud API key needed for this path.
 
 ## Environment variables
 
@@ -97,8 +123,11 @@ Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `wh
 | `OPENAI_API_KEY` | for voice STT | Whisper transcription of inbound audio |
 | `OPENAI_TRANSCRIBE_MODEL` | no | default `whisper-1` |
 | `OPENAI_TRANSCRIBE_LANGUAGE` | no | default `it` (Italian) |
-| `ANTHROPIC_API_KEY` | for reply agent | Claude Messages API |
-| `ANTHROPIC_MODEL` | no | default `claude-haiku-4-5` (Haiku 4.5 routing) |
+| `REPLY_PROVIDER` | no | `claude` (default) or `ollama` |
+| `ANTHROPIC_API_KEY` | when provider=claude | Claude Messages API |
+| `ANTHROPIC_MODEL` | no | default `claude-haiku-4-5` |
+| `OLLAMA_BASE_URL` | no | default `http://127.0.0.1:11434` |
+| `OLLAMA_MODEL` | no | default `qwen2.5:7b` |
 
 **Never commit real keys.** `.env*` is gitignored except `.env.example`.
 
@@ -112,7 +141,7 @@ Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `wh
 | `GET` | `/api/conversations/:id/messages` | Thread (Bird) |
 | `POST` | `/api/messages` | `{ conversationId, text }` send via Bird |
 | `POST` | `/api/messages/transcribe` | `{ messageId, mediaId }` → Whisper text |
-| `GET`/`POST` | `/api/messages/suggest-reply` | Claude template pick → `{ suggestion.draft }` |
+| `GET`/`POST` | `/api/messages/suggest-reply` | Reply agent (Claude/Ollama) → `{ suggestion.draft }` |
 | `POST` | `/api/webhook` | Optional Bird event receiver |
 
 ## Realtime: polling vs webhooks
@@ -127,7 +156,7 @@ Free-form replies require an open **24-hour customer service window**. Outside t
 ```
 src/lib/bird.ts              Bird REST client + media download (server-only)
 src/lib/transcribe.ts        Bird media → OpenAI Whisper
-src/lib/reply-agent.ts       Claude template router
+src/lib/reply-agent.ts       Claude / Ollama template router
 src/lib/reply-templates.ts   Load/render config/reply-templates.json
 config/reply-templates.json  Editable reply templates (no code change to add)
 src/lib/sentiment.ts         Sentiment types / label helpers
