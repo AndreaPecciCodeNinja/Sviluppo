@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Composer } from "./Composer";
 import { Inbox } from "./Inbox";
+import {
+  OllamaStatusBadge,
+  type OllamaHealthView,
+} from "./OllamaStatusBadge";
 import { Thread } from "./Thread";
 import type {
   BirdConfigStatus,
@@ -14,6 +18,8 @@ import type {
 const POLL_MS = Number(process.env.NEXT_PUBLIC_POLL_INTERVAL_MS || 3000);
 const INTERVAL =
   Number.isFinite(POLL_MS) && POLL_MS > 500 ? POLL_MS : 3000;
+/** Ollama health poll — lighter than inbox polling. */
+const OLLAMA_HEALTH_MS = 15000;
 
 export function ChatApp() {
   const [status, setStatus] = useState<BirdConfigStatus | null>(null);
@@ -29,6 +35,10 @@ export function ChatApp() {
   const [transcribing, setTranscribing] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestionMeta, setSuggestionMeta] = useState<string | null>(null);
+  const [ollamaHealth, setOllamaHealth] = useState<OllamaHealthView | null>(
+    null,
+  );
+  const [ollamaChecking, setOllamaChecking] = useState(false);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId),
@@ -43,6 +53,31 @@ export function ChatApp() {
       setStatus(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load status");
+    }
+  }, []);
+
+  const loadOllamaHealth = useCallback(async () => {
+    setOllamaChecking(true);
+    try {
+      const res = await fetch("/api/ollama/health", { cache: "no-store" });
+      const data = (await res.json()) as OllamaHealthView;
+      setOllamaHealth(data);
+      return data;
+    } catch {
+      setOllamaHealth({
+        provider: "ollama",
+        active: true,
+        reachable: false,
+        model: "?",
+        baseUrl: "?",
+        modelPresent: false,
+        ok: false,
+        message:
+          "Impossibile controllare Ollama (health API) — riprova tra poco",
+      });
+      return null;
+    } finally {
+      setOllamaChecking(false);
     }
   }, []);
 
@@ -86,6 +121,14 @@ export function ChatApp() {
   useEffect(() => {
     void loadStatus();
   }, [loadStatus]);
+
+  useEffect(() => {
+    void loadOllamaHealth();
+    const id = window.setInterval(() => {
+      void loadOllamaHealth();
+    }, OLLAMA_HEALTH_MS);
+    return () => window.clearInterval(id);
+  }, [loadOllamaHealth]);
 
   useEffect(() => {
     if (!status?.configured) return;
@@ -172,6 +215,12 @@ export function ChatApp() {
     setSuggesting(true);
     setError(null);
     try {
+      // Refresh Ollama badge before suggest when that provider is active.
+      const health = await loadOllamaHealth();
+      if (health?.active && !health.ok) {
+        setError(health.message);
+        return;
+      }
       const res = await fetch("/api/messages/suggest-reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -218,6 +267,7 @@ export function ChatApp() {
       );
     } finally {
       setSuggesting(false);
+      void loadOllamaHealth();
     }
   }
 
@@ -330,6 +380,12 @@ export function ChatApp() {
         />
       </aside>
       <section className="pane thread-pane">
+        <div className="thread-toolbar">
+          <OllamaStatusBadge
+            health={ollamaHealth}
+            checking={ollamaChecking && !ollamaHealth}
+          />
+        </div>
         <Thread
           conversationId={selectedId}
           displayName={selected?.displayName}

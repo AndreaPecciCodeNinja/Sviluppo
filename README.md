@@ -109,6 +109,8 @@ OLLAMA_MODEL=qwen2.5:7b
 
 If Ollama is down or the model is missing, the UI shows a clear error (start Ollama / `ollama pull …`). No cloud API key needed for this path.
 
+When `REPLY_PROVIDER=ollama`, the thread pane shows a status pill above the chat: green **Ollama disponibile** when `GET /api/tags` succeeds and `OLLAMA_MODEL` is installed; amber warning otherwise. Health is checked on load, every ~15s (`GET /api/ollama/health`), and again before **Suggerisci risposta**.
+
 ## Environment variables
 
 | Variable | Required | Purpose |
@@ -142,6 +144,7 @@ If Ollama is down or the model is missing, the UI shows a clear error (start Oll
 | `POST` | `/api/messages` | `{ conversationId, text }` send via Bird |
 | `POST` | `/api/messages/transcribe` | `{ messageId, mediaId }` → Whisper text |
 | `GET`/`POST` | `/api/messages/suggest-reply` | Reply agent (Claude/Ollama) → `{ suggestion.draft }` |
+| `GET` | `/api/ollama/health` | Ollama up? + model present (UI badge) |
 | `POST` | `/api/webhook` | Optional Bird event receiver |
 
 ## Realtime: polling vs webhooks

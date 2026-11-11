@@ -70,6 +70,117 @@ export function getReplyAgentStatus() {
   };
 }
 
+export type OllamaHealth = {
+  provider: ReplyProvider;
+  /** True only when REPLY_PROVIDER=ollama */
+  active: boolean;
+  reachable: boolean;
+  model: string;
+  baseUrl: string;
+  modelPresent: boolean;
+  availableModels: string[];
+  ok: boolean;
+  message: string;
+};
+
+function modelMatches(requested: string, installedName: string): boolean {
+  if (installedName === requested) return true;
+  // Ollama sometimes lists tags as name:tag; allow prefix match on family.
+  return (
+    installedName.startsWith(`${requested}-`) ||
+    installedName.startsWith(`${requested}:`)
+  );
+}
+
+/**
+ * Lightweight Ollama probe: GET /api/tags on OLLAMA_BASE_URL.
+ * Used for UI badge and optional pre-suggest checks.
+ */
+export async function checkOllamaHealth(): Promise<OllamaHealth> {
+  const provider = getReplyProvider();
+  const { baseUrl, model } = getOllamaConfig();
+
+  if (provider !== "ollama") {
+    return {
+      provider,
+      active: false,
+      reachable: false,
+      model,
+      baseUrl,
+      modelPresent: false,
+      availableModels: [],
+      ok: false,
+      message: `Reply provider is ${provider} (Ollama badge inactive)`,
+    };
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/api/tags`, {
+      method: "GET",
+      cache: "no-store",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!response.ok) {
+      return {
+        provider,
+        active: true,
+        reachable: false,
+        model,
+        baseUrl,
+        modelPresent: false,
+        availableModels: [],
+        ok: false,
+        message: `Ollama non raggiungibile (HTTP ${response.status}) su ${baseUrl}`,
+      };
+    }
+    const body = (await response.json()) as {
+      models?: Array<{ name?: string; model?: string }>;
+    };
+    const availableModels = (body.models || [])
+      .map((m) => m.name || m.model || "")
+      .filter(Boolean);
+    const modelPresent = availableModels.some((name) =>
+      modelMatches(model, name),
+    );
+    if (!modelPresent) {
+      return {
+        provider,
+        active: true,
+        reachable: true,
+        model,
+        baseUrl,
+        modelPresent: false,
+        availableModels,
+        ok: false,
+        message: `Ollama attivo, ma manca il modello «${model}» — esegui: ollama pull ${model}`,
+      };
+    }
+    return {
+      provider,
+      active: true,
+      reachable: true,
+      model,
+      baseUrl,
+      modelPresent: true,
+      availableModels,
+      ok: true,
+      message: `Ollama disponibile · ${model}`,
+    };
+  } catch {
+    return {
+      provider,
+      active: true,
+      reachable: false,
+      model,
+      baseUrl,
+      modelPresent: false,
+      availableModels: [],
+      ok: false,
+      message: `Ollama non raggiungibile su ${baseUrl} — avvia ollama serve / controlla OLLAMA_BASE_URL`,
+    };
+  }
+}
+
 function buildSystemPrompt(templates: ReplyTemplate[]): string {
   const catalog = templates.map((t) => ({
     id: t.id,
