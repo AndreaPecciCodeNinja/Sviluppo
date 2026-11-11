@@ -29,6 +29,7 @@ Set `BIRD_WHATSAPP_PHONE_NUMBER=+393337802795` so list/send calls scope to this 
 - **Offline sentiment browse** at [`/sentiment`](http://localhost:3200/sentiment) — charts + urgency callouts + filterable list from `data/sentiment.json` (no Bird API key)
 - **Select inbound message** → editable composer box; **voice notes / audio** download via Bird media API and transcribe with OpenAI Whisper (`language=it`)
 - **Reply agent (Claude or local Ollama)** — classifies the box text, picks a template from `config/reply-templates.json`, fills slots (e.g. food ingredients → pranzo/cena ask), shows editable draft before Bird send
+- **Local chat memory (LangChain + SQLite)** — per-contact facts + recent snippets in `.data/memory.sqlite` (no cloud keys); injected into suggest-reply; UI panel to view/edit / **Salva fatto**
 
 ## Quick start
 
@@ -111,6 +112,25 @@ If Ollama is down or the model is missing, the UI shows a clear error (start Oll
 
 When `REPLY_PROVIDER=ollama`, the thread pane shows a status pill above the chat: green **Ollama disponibile** when `GET /api/tags` succeeds and `OLLAMA_MODEL` is installed; amber warning otherwise. Health is checked on load, every ~15s (`GET /api/ollama/health`), and again before **Suggerisci risposta**.
 
+### Local memory (LangChain + SQLite)
+
+No cloud keys for memory. SQLite file defaults to `.data/memory.sqlite` (gitignored).
+
+1. Open a conversation → **Memoria (SQLite)** panel under the composer.
+2. Select inbound text (or Whisper) → optional auto-snippet write-back.
+3. Click **Salva fatto dal box** to store a durable fact for that contact.
+4. **Suggerisci risposta** loads facts + recent snippets into the Claude/Ollama prompt.
+5. Outbound Send also appends an `ai` snippet.
+
+Optional env:
+
+```env
+MEMORY_SQLITE_PATH=.data/memory.sqlite
+MEMORY_MAX_MESSAGES=20
+```
+
+Plan: project store `docs/langchain-sqlite-memory-plan.md`.
+
 ## Environment variables
 
 | Variable | Required | Purpose |
@@ -130,6 +150,8 @@ When `REPLY_PROVIDER=ollama`, the thread pane shows a status pill above the chat
 | `ANTHROPIC_MODEL` | no | default `claude-haiku-4-5` |
 | `OLLAMA_BASE_URL` | no | default `http://127.0.0.1:11434` |
 | `OLLAMA_MODEL` | no | default `qwen2.5:7b` |
+| `MEMORY_SQLITE_PATH` | no | default `.data/memory.sqlite` (local, no API key) |
+| `MEMORY_MAX_MESSAGES` | no | snippets injected into reply prompts (default 20) |
 
 **Never commit real keys.** `.env*` is gitignored except `.env.example`.
 
@@ -145,6 +167,8 @@ When `REPLY_PROVIDER=ollama`, the thread pane shows a status pill above the chat
 | `POST` | `/api/messages/transcribe` | `{ messageId, mediaId }` → Whisper text |
 | `GET`/`POST` | `/api/messages/suggest-reply` | Reply agent (Claude/Ollama) → `{ suggestion.draft }` |
 | `GET` | `/api/ollama/health` | Ollama up? + model present (UI badge) |
+| `GET`/`POST` | `/api/memory` | List/create facts or message snippets |
+| `PATCH`/`DELETE` | `/api/memory/:id` | Edit/delete a fact |
 | `POST` | `/api/webhook` | Optional Bird event receiver |
 
 ## Realtime: polling vs webhooks
@@ -159,9 +183,11 @@ Free-form replies require an open **24-hour customer service window**. Outside t
 ```
 src/lib/bird.ts              Bird REST client + media download (server-only)
 src/lib/transcribe.ts        Bird media → OpenAI Whisper
-src/lib/reply-agent.ts       Claude / Ollama template router
+src/lib/reply-agent.ts       Claude / Ollama template router (+ memory inject)
 src/lib/reply-templates.ts   Load/render config/reply-templates.json
+src/lib/memory/              LangChain SQLite history + facts store
 config/reply-templates.json  Editable reply templates (no code change to add)
+.data/memory.sqlite          Local memory DB (gitignored, created at runtime)
 src/lib/sentiment.ts         Sentiment types / label helpers
 data/sentiment.json          Offline sentiment snapshot (no Bird calls)
 src/app/api/                 Next.js Route Handlers

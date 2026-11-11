@@ -425,11 +425,19 @@ function renderChoice(
   };
 }
 
+export type SuggestReplyOptions = {
+  /** Contact key for local SQLite memory (phone E.164 or conversation id). */
+  contactKey?: string | null;
+  conversationId?: string | null;
+};
+
 /**
  * Classify inbound text with Claude or local Ollama and render a reply template.
+ * When `contactKey` is set, LangChain/SQLite memory facts + snippets are injected.
  */
 export async function suggestReplyFromText(
   inboundText: string,
+  options: SuggestReplyOptions = {},
 ): Promise<SuggestReplyResult> {
   const text = inboundText.trim();
   if (!text) {
@@ -441,8 +449,35 @@ export async function suggestReplyFromText(
     throw new Error("No reply templates configured in config/reply-templates.json");
   }
 
+  const contactKey = options.contactKey?.trim() || "";
+  let memoryBlock = "";
+  if (contactKey) {
+    const { buildMemoryPromptBlock, appendMessage } = await import(
+      "@/lib/memory"
+    );
+    memoryBlock = buildMemoryPromptBlock(contactKey);
+    // Persist the inbound text we're classifying as a human snippet.
+    try {
+      appendMessage({
+        contactKey,
+        conversationId: options.conversationId,
+        role: "human",
+        content: text,
+      });
+    } catch {
+      /* memory write-back is best-effort */
+    }
+  }
+
   const provider = getReplyProvider();
-  const system = buildSystemPrompt(templates);
+  const system = [
+    buildSystemPrompt(templates),
+    memoryBlock
+      ? `\nUse this contact memory when filling slots (do not invent beyond it + inbound text):\n${memoryBlock}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   if (provider === "ollama") {
     const { baseUrl, model } = getOllamaConfig();
