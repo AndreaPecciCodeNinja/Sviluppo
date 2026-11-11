@@ -47,7 +47,7 @@ export function Composer({
         ? "Reply agent sta scegliendo un template…"
         : windowClosed
           ? "Finestra 24h chiusa / window closed — serve inbound o template Bird"
-          : "Type a reply — or click an inbound message, then Suggerisci risposta…";
+          : "Type a reply — auto-bozza sull’ultimo inbound, o Suggerisci risposta…";
 
   return (
     <form className="composer" onSubmit={handleSubmit}>
