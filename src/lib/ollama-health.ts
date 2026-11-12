@@ -1,4 +1,6 @@
-export type ReplyProvider = "claude" | "ollama";
+import { getOllamaConfig, getReplyProvider, type ReplyProvider } from "./reply-provider";
+
+export type { ReplyProvider };
 
 export type OllamaHealth = {
   provider: ReplyProvider;
@@ -13,21 +15,6 @@ export type OllamaHealth = {
   ok: boolean;
   message: string;
 };
-
-function getReplyProvider(): ReplyProvider {
-  const raw = (process.env.REPLY_PROVIDER || "ollama").trim().toLowerCase();
-  return raw === "claude" ? "claude" : "ollama";
-}
-
-function getOllamaConfig() {
-  const base =
-    process.env.OLLAMA_BASE_URL?.trim().replace(/\/+$/, "") ||
-    "http://127.0.0.1:11434";
-  return {
-    baseUrl: base,
-    model: process.env.OLLAMA_MODEL?.trim() || "qwen2.5:7b",
-  };
-}
 
 function modelMatches(requested: string, installedName: string): boolean {
   if (installedName === requested) return true;

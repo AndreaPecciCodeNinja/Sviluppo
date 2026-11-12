@@ -12,6 +12,8 @@ type ComposerProps = {
   selectedLabel?: string | null;
   statusLabel?: string | null;
   suggestionMeta?: string | null;
+  routeLabel?: string | null;
+  specialistId?: string | null;
   onSend: (text: string) => Promise<void>;
   onSuggestReply?: () => Promise<void>;
   onClearSelection?: () => void;
@@ -27,6 +29,8 @@ export function Composer({
   selectedLabel,
   statusLabel,
   suggestionMeta,
+  routeLabel,
+  specialistId,
   onSend,
   onSuggestReply,
   onClearSelection,
@@ -44,19 +48,35 @@ export function Composer({
     : statusLabel
       ? statusLabel
       : suggesting
-        ? "Reply agent sta scegliendo un template…"
+        ? "Router sta scegliendo lo specialista…"
         : windowClosed
           ? "Finestra 24h chiusa / window closed — serve inbound o template Bird"
-          : "Type a reply — auto-bozza sull’ultimo inbound, o Suggerisci risposta…";
+          : "Type a reply — il router prepara la bozza, oppure Suggerisci risposta…";
 
   return (
     <form className="composer" onSubmit={handleSubmit}>
       <div className="composer-meta">
-        <label className="composer-label" htmlFor="composer-input">
-          {selectedLabel
-            ? `Messaggio selezionato / Selected · ${selectedLabel}`
-            : "Risposta / Reply"}
-        </label>
+        <div className="composer-label-wrap">
+          <label className="composer-label" htmlFor="composer-input">
+            {selectedLabel
+              ? `Messaggio selezionato / Selected · ${selectedLabel}`
+              : "Risposta / Reply"}
+          </label>
+          {routeLabel ? (
+            <span
+              className={`specialist-badge specialist-${
+                specialistId === "food" ||
+                specialistId === "appointments" ||
+                specialistId === "generic"
+                  ? specialistId
+                  : "generic"
+              }`}
+              role="status"
+            >
+              {routeLabel}
+            </span>
+          ) : null}
+        </div>
         <div className="composer-meta-actions">
           {onSuggestReply ? (
             <button

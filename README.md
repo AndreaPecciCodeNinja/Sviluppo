@@ -29,7 +29,8 @@ Set `BIRD_WHATSAPP_PHONE_NUMBER=+393337802795` so list/send calls scope to this 
 - **Offline sentiment browse** at [`/sentiment`](http://localhost:3200/sentiment) — charts + urgency callouts + filterable list from `data/sentiment.json` (no Bird API key)
 - **Select inbound message** → editable composer box; **voice notes / audio** download via Bird media API and transcribe with OpenAI Whisper (`language=it`)
 - **Reply agent (Claude or local Ollama)** — classifies the box text, picks a template from `config/reply-templates.json`, fills slots (e.g. food ingredients → pranzo/cena ask), shows editable draft before Bird send
-- **Auto-bozza ultimo inbound** — opening a chat (or a new inbound on poll) selects the latest inbound and, when the agent matches a food/pranzo|cena template, fills the composer draft; never auto-sends; **Suggerisci risposta** remains a manual override
+- **Auto-bozza ultimo inbound** — opening a chat (or a new inbound on poll) selects the latest inbound and asks the **message router** for a specialist draft; never auto-sends; **Suggerisci risposta** remains a manual override
+- **Router + specialists** — each new inbound is classified (`appointment`, `food_meal`, `generic`). The composer shows a badge such as `Router → Appuntamenti` or `Router → Cibo`. Food reuses the existing ingredient template; appointments draft a confirmation or a question; generic never auto-fills
 - **Local chat memory (LangChain + SQLite)** — per-contact facts + recent snippets in `.data/memory.sqlite` (no cloud keys); injected into suggest-reply; UI panel to view/edit / **Salva fatto**
 
 ## Quick start
@@ -80,12 +81,33 @@ Requires `OPENAI_API_KEY` in `.env.local` for step 4. Without it, text selection
 3. The active provider (`REPLY_PROVIDER`) chooses a template from `config/reply-templates.json` and fills slots.
 4. The composer shows the draft (editable). Review, then **Send** via Bird — never auto-sent.
 
-**Auto-bozza:** on conversation open / new inbound (poll), the UI selects the latest inbound once per message id. If the agent matches `food_ingredients_meal`, the draft is applied with status “Bozza automatica…”. Generic fallbacks are not applied automatically (inbound text stays in the box).
+**Auto-bozza:** on conversation open / new inbound (poll), the UI selects the latest inbound once per message id and calls the router (`Router · bozza automatica…`). A draft is applied only when the specialist allows it (`food_ingredients_meal`, or the appointments specialist). Generic stays in the box until **Suggerisci risposta**. The composer badge names the specialist (`Router → Cibo`, `Router → Appuntamenti`, `Router → Generico`). Nothing is sent to WhatsApp until **Send**.
 
 Example food flow: inbound “pomodori, mozzarella, basilico, olio” → template `food_ingredients_meal` →  
 “Hai elencato questi ingredienti: pomodori, mozzarella, basilico, olio. Vuoi che ti prepari il pranzo o la cena…?”
 
 Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `when_to_use`, `body` with `{{slots}}`).
+
+### Router and specialists
+
+`POST /api/messages/suggest-reply` classifies the inbound text, then runs one specialist from `src/lib/agents/specialists.ts`.
+
+| Specialist | Intent | Auto-draft |
+|------------|--------|------------|
+| `food` | ingredient list / pranzo\|cena | yes, when template `food_ingredients_meal` is chosen (existing flow) |
+| `appointments` | appointment, time, “ci vediamo” | yes — confirmation if day and time are present, otherwise a question |
+| `generic` | anything else | no — short ack only if you press **Suggerisci risposta** |
+
+Example: inbound “Vorrei un appuntamento martedì alle 15” → badge `Router → Appuntamenti` → editable draft “Perfetto — segno un appuntamento per martedì alle 15:00. Confermi?”. Review, then Send.
+
+Add a specialist by appending an entry (`id`, `match`, `prompt`, `draft`) in `src/lib/agents/specialists.ts`. Optional env toggles:
+
+```env
+SPECIALIST_FOOD=1
+SPECIALIST_APPOINTMENTS=1
+```
+
+Set either to `0` / `false` / `off` to skip that specialist (the message falls through to Generico, still without auto-send). Provider remains `REPLY_PROVIDER=ollama` (default on Mac) or `claude`.
 
 #### Provider: Claude (default)
 
@@ -153,6 +175,8 @@ Plan: project store `docs/langchain-sqlite-memory-plan.md`.
 | `ANTHROPIC_MODEL` | no | default `claude-haiku-4-5` |
 | `OLLAMA_BASE_URL` | no | default `http://127.0.0.1:11434` |
 | `OLLAMA_MODEL` | no | default `qwen2.5:7b` |
+| `SPECIALIST_FOOD` | no | `0`/`false`/`off` disables the food specialist |
+| `SPECIALIST_APPOINTMENTS` | no | `0`/`false`/`off` disables the appointments specialist |
 | `MEMORY_SQLITE_PATH` | no | default `.data/memory.sqlite` (local, no API key) |
 | `MEMORY_MAX_MESSAGES` | no | snippets injected into reply prompts (default 20) |
 
@@ -186,7 +210,9 @@ Free-form replies require an open **24-hour customer service window**. Outside t
 ```
 src/lib/bird.ts              Bird REST client + media download (server-only)
 src/lib/transcribe.ts        Bird media → OpenAI Whisper
-src/lib/reply-agent.ts       Claude / Ollama template router (+ memory inject)
+src/lib/reply-agent.ts       Claude / Ollama template fill for the food specialist
+src/lib/reply-provider.ts    REPLY_PROVIDER, model, and Ollama/Claude config
+src/lib/agents/              Inbound router + specialist registry (food, appointments, generic)
 src/lib/reply-templates.ts   Load/render config/reply-templates.json
 src/lib/memory/              SQLite facts/snippets + LangChain-compatible history adapter
 config/reply-templates.json  Editable reply templates (no code change to add)

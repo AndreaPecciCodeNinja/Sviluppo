@@ -75,6 +75,10 @@ export function ChatApp() {
     null,
   );
   const [suggestionMeta, setSuggestionMeta] = useState<string | null>(null);
+  const [routeBadge, setRouteBadge] = useState<{
+    label: string;
+    specialistId: string;
+  } | null>(null);
   const [ollamaHealth, setOllamaHealth] = useState<OllamaHealthView | null>(
     null,
   );
@@ -202,6 +206,7 @@ export function ChatApp() {
     setSuggesting(false);
     setSuggestSource(null);
     setSuggestionMeta(null);
+    setRouteBadge(null);
   }, [status?.configured, selectedId, loadMessages]);
 
   async function rememberSnippet(params: {
@@ -238,6 +243,7 @@ export function ChatApp() {
     if (message.direction !== "inbound") return "";
     setSelectedMessage(message);
     setSuggestionMeta(null);
+    setRouteBadge(null);
     setError(null);
 
     if (message.kind === "audio" && message.audio?.mediaId) {
@@ -348,6 +354,11 @@ export function ChatApp() {
           intentSummary?: string;
           model?: string;
           provider?: string;
+          autoEligible?: boolean;
+          specialistId?: string;
+          specialistLabel?: string;
+          routeLabel?: string;
+          skipped?: boolean;
         };
         error?: { message?: string; provider?: string };
       };
@@ -360,27 +371,45 @@ export function ChatApp() {
         return;
       }
       const suggestion = data.suggestion;
-      if (!suggestion?.draft) {
-        setError("Reply agent returned an empty draft");
-        return;
-      }
-
-      const templateId = suggestion.templateId || "";
-      const autoEligible = AUTO_DRAFT_TEMPLATE_IDS.has(templateId);
+      const templateId = suggestion?.templateId || "";
+      const autoEligible =
+        suggestion?.autoEligible === true ||
+        (suggestion?.autoEligible == null &&
+          AUTO_DRAFT_TEMPLATE_IDS.has(templateId));
+      const badge = suggestion?.routeLabel
+        ? {
+            label: suggestion.routeLabel,
+            specialistId: suggestion.specialistId || "generic",
+          }
+        : null;
       const preview = shortPreview(
         params.sourceMessage
           ? inboundComposerText(params.sourceMessage) || text
           : text,
       );
 
+      if (!suggestion?.draft) {
+        setRouteBadge(badge);
+        if (suggestion?.skipped) {
+          setSuggestionMeta(
+            [badge?.label, "bozza non disponibile"].filter(Boolean).join(" · "),
+          );
+          return;
+        }
+        setError("Reply agent returned an empty draft");
+        return;
+      }
+
       if (params.source === "auto" && !autoEligible) {
-        // Keep inbound text; do not overwrite with generic_ack.
+        // Keep inbound text. Generic ack is manual-only.
+        setRouteBadge(badge);
         setSuggestionMeta(
           [
+            badge?.label,
             "Bozza automatica saltata",
             preview ? `msg “${preview}”` : null,
-            suggestion.templateLabel || templateId || "generic",
-            "intent non riconosciuto — usa Suggerisci",
+            suggestion.templateLabel || suggestion.specialistLabel || templateId,
+            "nessuna auto-bozza — usa Suggerisci",
           ]
             .filter(Boolean)
             .join(" · "),
@@ -389,12 +418,14 @@ export function ChatApp() {
       }
 
       setDraft(suggestion.draft);
+      setRouteBadge(badge);
       setSuggestionMeta(
         [
           params.source === "auto" ? "Bozza automatica" : null,
+          badge?.label,
           preview ? `msg “${preview}”` : null,
           suggestion.provider,
-          suggestion.templateLabel || suggestion.templateId,
+          suggestion.templateLabel || suggestion.specialistLabel,
           suggestion.intentSummary,
           suggestion.model ? `model ${suggestion.model}` : null,
         ]
@@ -496,6 +527,7 @@ export function ChatApp() {
         setDraft("");
         setSelectedMessage(null);
         setSuggestionMeta(null);
+        setRouteBadge(null);
       }
       await Promise.all([loadMessages(selectedId), loadConversations()]);
     } catch (err) {
@@ -554,8 +586,8 @@ export function ChatApp() {
     ? "Trascrizione…"
     : suggesting
       ? suggestSource === "auto"
-        ? "Bozza automatica…"
-        : "Reply agent sta scegliendo un template…"
+        ? "Router · bozza automatica…"
+        : "Router sta scegliendo lo specialista…"
       : null;
 
   return (
@@ -608,6 +640,8 @@ export function ChatApp() {
           selectedLabel={selectedLabel}
           statusLabel={statusLabel}
           suggestionMeta={suggestionMeta}
+          routeLabel={routeBadge?.label ?? null}
+          specialistId={routeBadge?.specialistId ?? null}
           onClearSelection={() => {
             suggestGenerationRef.current += 1;
             // Keep autoHandled id so poll does not immediately re-draft.
@@ -617,6 +651,7 @@ export function ChatApp() {
             setSuggesting(false);
             setSuggestSource(null);
             setSuggestionMeta(null);
+            setRouteBadge(null);
           }}
           onSuggestReply={handleSuggestReply}
           onSend={handleSend}

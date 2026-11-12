@@ -520,6 +520,43 @@ button.bubble {
   cursor: not-allowed;
 }
 
+.composer-label-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.6rem;
+  min-width: 0;
+}
+
+.specialist-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.specialist-badge.specialist-food {
+  color: #b7e4c7;
+  border-color: #1f8f6a;
+  background: var(--accent-soft);
+}
+
+.specialist-badge.specialist-appointments {
+  color: #c9d7ff;
+  border-color: #3d5a99;
+  background: #1a2744;
+}
+
+.specialist-badge.specialist-generic {
+  color: var(--muted);
+}
+
 .composer-status {
   grid-area: status;
   margin: 0;
