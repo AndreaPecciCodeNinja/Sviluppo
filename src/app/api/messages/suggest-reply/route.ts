@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getReplyAgentStatus,
-  suggestReplyFromText,
-} from "@/lib/reply-agent";
+import { listSpecialistCatalog, routeInboundMessage } from "@/lib/agents";
+import { getReplyAgentStatus } from "@/lib/reply-agent";
 import { listReplyTemplates } from "@/lib/reply-templates";
 
 export const runtime = "nodejs";
@@ -17,6 +15,7 @@ export async function GET() {
       label: t.label,
       slots: t.slots.map((s) => s.name),
     })),
+    specialists: listSpecialistCatalog(),
   });
 }
 
@@ -69,7 +68,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const suggestion = await suggestReplyFromText(text, {
+    const suggestion = await routeInboundMessage(text, {
       contactKey: payload.contactKey,
       conversationId: payload.conversationId,
     });
