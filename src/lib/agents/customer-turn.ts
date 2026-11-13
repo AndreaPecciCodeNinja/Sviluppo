@@ -53,6 +53,60 @@ function ollamaError(err: unknown): string {
   return `Ollama non ha scritto il menù. ${message}`;
 }
 
+function confirmedMeal(prior: readonly string[]): {
+  meal: "la cena" | "il pranzo";
+  ingredients: string[];
+} | null {
+  let acceptanceAt = -1;
+  for (let i = prior.length - 1; i >= 0; i--) {
+    if (isMealAcceptanceQuestion(prior[i])) {
+      acceptanceAt = i;
+      break;
+    }
+  }
+  if (acceptanceAt < 0) return null;
+  const saidYes = prior
+    .slice(acceptanceAt + 1)
+    .some((line) => isBareAffirmation(line) || wantsTheMenu(line));
+  if (!saidYes) return null;
+  const ingredients = ingredientsFromThread(prior.slice(0, acceptanceAt + 1));
+  if (ingredients.length < 2) return null;
+  return { meal: mealPhrase(prior[acceptanceAt]), ingredients };
+}
+
+const FOLLOW_PROMPT = [
+  "Conosci già le risposte della persona. Non chiederle di nuovo.",
+  "Non chiedere gli ingredienti. Non chiedere se è il pranzo o la cena.",
+  "Usa solo gli alimenti scritti dalla persona. Non aggiungerne altri.",
+  "Niente peperoni, pomodoro, olio, burro, sale, aglio, pancetta, guanciale, né altri cibi assenti dalla lista.",
+  "Rispondi in italiano alla nuova frase, con quel pasto e quegli alimenti.",
+  "Non scrivere JSON.",
+].join("\n");
+
+async function followUpFromOllama(
+  question: string,
+  remembered: { meal: string; ingredients: readonly string[] },
+): Promise<string> {
+  const listed = joinItalian(remembered.ingredients);
+  try {
+    const completed = await completeWithOllama({
+      system: FOLLOW_PROMPT,
+      userText: [
+        `Pasto già scelto: ${remembered.meal}`,
+        `Alimenti già scritti, e solo questi: ${listed}`,
+        "Ha già detto sì.",
+        `Nuova frase: ${question}`,
+      ].join("\n"),
+      json: false,
+    });
+    const answer = completed.raw.trim();
+    if (!answer) return "Ollama non ha scritto il menù. Risposta vuota.";
+    return answer;
+  } catch (err) {
+    return ollamaError(err);
+  }
+}
+
 async function menuFromOllama(
   question: string,
   prior: readonly string[],
@@ -89,6 +143,8 @@ export async function answerCustomer(turn: CustomerTurn): Promise<string> {
   }
   const sequenced = provaFiammettaReply(question, prior);
   if (sequenced?.draft) return sequenced.draft;
+  const remembered = confirmedMeal(prior);
+  if (remembered) return followUpFromOllama(question, remembered);
   const asked = question.replace(/\s+/g, " ").trim();
   return withFiammettaIntro(
     `Sulla tua domanda «${asked}»: se mi elenchi gli alimenti, ti chiedo se è il pranzo o la cena.`,

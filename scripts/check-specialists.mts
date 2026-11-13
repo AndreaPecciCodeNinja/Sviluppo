@@ -592,4 +592,36 @@ assert.match(menuUser, /pecorino/);
 assert.match(menuUser, /solo questi/i);
 assert.doesNotMatch(menuReply, /elenchi gli alimenti/);
 
+const againPrior = [...menuPrior, "OK. Fammi il menù", writtenMenu];
+let againUser = "";
+let againSystem = "";
+const againAnswer = "Resto sulla cena con uova, spaghetti, pepe e pecorino.";
+globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+  const body = JSON.parse(String(init?.body ?? "{}")) as {
+    messages?: Array<{ role?: string; content?: string }>;
+  };
+  againSystem = body.messages?.find((item) => item.role === "system")?.content ?? "";
+  againUser = body.messages?.find((item) => item.role === "user")?.content ?? "";
+  return new Response(
+    JSON.stringify({ message: { content: againAnswer } }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}) as typeof fetch;
+let againReply = "";
+try {
+  againReply = await answerCustomer({
+    question: "e dopo?",
+    prior: againPrior,
+  });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.equal(againReply, againAnswer);
+assert.match(againSystem, /Non chiedere gli ingredienti/i);
+assert.match(againUser, /Pasto già scelto: la cena/);
+assert.match(againUser, /uova, spaghetti, pepe e pecorino/);
+assert.match(againUser, /Ha già detto sì/);
+assert.match(againUser, /e dopo\?/);
+assert.doesNotMatch(againReply, /elenchi gli alimenti/);
+
 console.log("specialist heuristic checks ok");
