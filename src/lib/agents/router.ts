@@ -1,8 +1,11 @@
 import { extractJsonObject, completeWithReplyProvider } from "./llm";
+import { mealChoiceFollowUp } from "./meal-choice";
 import { heuristicIntent } from "./match";
+import { getReplyProvider } from "../reply-provider";
 import {
   enabledIntents,
   getSpecialist,
+  isEnvEnabled,
   resolveSpecialist,
 } from "./specialists";
 import type {
@@ -118,6 +121,8 @@ export async function classifyIntent(text: string): Promise<Classification> {
 export type RouteOptions = {
   contactKey?: string | null;
   conversationId?: string | null;
+  /** Earlier thread texts (not the inbound being routed). */
+  priorTexts?: readonly string[] | null;
 };
 
 /**
@@ -131,6 +136,31 @@ export async function routeInboundMessage(
   const text = inboundText.trim();
   if (!text) {
     throw new Error("Empty text — select a message or paste content first");
+  }
+
+  const food = getSpecialist("food");
+  const priorTexts = (options.priorTexts ?? []).filter(
+    (item) => typeof item === "string" && item.trim().length > 0,
+  );
+  if (food && isEnvEnabled(food.envFlag)) {
+    const followUp = mealChoiceFollowUp(text, priorTexts);
+    if (followUp) {
+      return {
+        draft: followUp,
+        autoEligible: true,
+        specialistId: "food",
+        specialistLabel: food.label,
+        routeLabel: `Router → ${food.label}`,
+        intent: "food_meal",
+        rationale: "Conferma senza pranzo o cena: chiedo quale pasto",
+        intentSummary: "scelta pranzo o cena",
+        slots: {},
+        templateId: "food_meal_choice",
+        templateLabel: "Scelta pranzo o cena",
+        model: "heuristic",
+        provider: getReplyProvider(),
+      };
+    }
   }
 
   const classification = await classifyIntent(text);

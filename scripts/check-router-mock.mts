@@ -16,7 +16,10 @@ function reply(content: unknown): Response {
   );
 }
 
+let providerCalls = 0;
+
 globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+  providerCalls += 1;
   const body = JSON.parse(String(init?.body ?? "{}")) as ChatBody;
   const system =
     body.messages?.find((message) => message.role === "system")?.content ?? "";
@@ -80,6 +83,23 @@ assert.equal(generic.specialistId, "generic");
 assert.equal(generic.routeLabel, "Router → Generico");
 assert.equal(generic.autoEligible, false);
 assert.match(generic.draft, /Grazie per il messaggio/);
+
+const callsBeforeMeal = providerCalls;
+const meal = await routeInboundMessage("sì", {
+  priorTexts: ["pomodori, mozzarella, basilico, olio"],
+});
+assert.equal(providerCalls, callsBeforeMeal);
+assert.equal(meal.draft, "Perfetto. Preferisci il pranzo o la cena?");
+assert.equal(meal.autoEligible, true);
+assert.equal(meal.specialistId, "food");
+assert.equal(meal.routeLabel, "Router → Cibo");
+assert.equal(meal.templateId, "food_meal_choice");
+
+const namedMeal = await routeInboundMessage("pranzo", {
+  priorTexts: ["pomodori, mozzarella, basilico, olio"],
+});
+assert.notEqual(namedMeal.templateId, "food_meal_choice");
+assert.ok(providerCalls > callsBeforeMeal);
 
 process.env.SPECIALIST_APPOINTMENTS = "0";
 const disabled = await routeInboundMessage(
