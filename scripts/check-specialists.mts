@@ -151,7 +151,7 @@ const lunchFromQuestion = mealDishContext("Sì, preparami il pranzo.", [asked]);
 assert.equal(lunchFromQuestion?.meal, "pranzo");
 assert.equal(
   lunchFromQuestion?.dish,
-  "un piatto con latte, uova, zucchine e salsiccia",
+  "una frittata di zucchine e salsiccia",
 );
 assert.deepEqual(lunchFromQuestion?.ingredients, [
   "latte",
@@ -164,8 +164,15 @@ const lunchDraft = buildDishDraft(
   lunchFromQuestion?.dish || "",
   lunchFromQuestion?.ingredients || [],
 );
-assert.match(lunchDraft, /^Per il pranzo ti propongo un piatto con latte, uova, zucchine e salsiccia/);
-assert.doesNotMatch(lunchDraft, /torta|carne|Andrea|Vuoi che ti prepari/i);
+assert.match(
+  lunchDraft,
+  /^Per il pranzo ti propongo una frittata di zucchine e salsiccia/,
+);
+assert.match(lunchDraft, /uova e un goccio di latte/);
+assert.doesNotMatch(
+  lunchDraft,
+  /Userò latte, uova, zucchine e salsiccia|torta|carne|Andrea|Vuoi che ti prepari/i,
+);
 assert.equal(ingredientMealQuestion("ciao"), null);
 
 const mixedThread = [

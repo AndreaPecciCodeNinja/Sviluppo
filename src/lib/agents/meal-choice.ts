@@ -255,6 +255,9 @@ export function joinItalian(items: readonly string[]): string {
 /** A few obvious home dishes. Unknown lists still get a plate, not another question. */
 export function heuristicDish(ingredients: readonly string[]): string | null {
   const blob = ingredients.join(" ");
+  if (/uov/iu.test(blob) && /zucchin/iu.test(blob) && /salsicc/iu.test(blob)) {
+    return "una frittata di zucchine e salsiccia";
+  }
   if (/carne/iu.test(blob) && /pane/iu.test(blob)) {
     return "un panino con carne";
   }
@@ -300,5 +303,8 @@ export function buildDishDraft(
 ): string {
   const mealPhrase = meal === "cena" ? "la cena" : "il pranzo";
   const name = dish.trim().replace(/[.?!]+$/g, "");
+  if (/frittata di zucchine e salsiccia/iu.test(name)) {
+    return `Per ${mealPhrase} ti propongo ${name}. Con le uova e un goccio di latte la leghiamo in padella.`;
+  }
   return `Per ${mealPhrase} ti propongo ${name}. Userò ${joinItalian(ingredients)}.`;
 }
