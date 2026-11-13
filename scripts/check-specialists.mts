@@ -557,4 +557,39 @@ assert.match(ollamaDown, /Ollama non ha scritto il menù/);
 assert.match(ollamaDown, /unreachable/i);
 assert.doesNotMatch(ollamaDown, /preparo|carbonara|spaghetti all'uovo/);
 
+const menuPrior = [
+  "uova, spaghetti, pepe, pecorino",
+  "Vuoi che ti prepari il pranzo o la cena?",
+  "cena",
+  "Per la cena con uova, spaghetti, pepe e pecorino va bene?",
+];
+let menuUser = "";
+const writtenMenu = "Menù della cena: spaghetti con uova, pepe e pecorino.";
+globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+  const body = JSON.parse(String(init?.body ?? "{}")) as {
+    messages?: Array<{ role?: string; content?: string }>;
+  };
+  menuUser = body.messages?.find((item) => item.role === "user")?.content ?? "";
+  return new Response(
+    JSON.stringify({ message: { content: writtenMenu } }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}) as typeof fetch;
+let menuReply = "";
+try {
+  menuReply = await answerCustomer({
+    question: "OK. Fammi il menù",
+    prior: menuPrior,
+  });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.equal(menuReply, writtenMenu);
+assert.match(menuUser, /uova/);
+assert.match(menuUser, /spaghetti/);
+assert.match(menuUser, /pepe/);
+assert.match(menuUser, /pecorino/);
+assert.match(menuUser, /solo questi/i);
+assert.doesNotMatch(menuReply, /elenchi gli alimenti/);
+
 console.log("specialist heuristic checks ok");

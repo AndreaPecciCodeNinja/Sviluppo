@@ -34,6 +34,20 @@ function mealPhrase(question: string): "la cena" | "il pranzo" {
   return /per la cena/iu.test(question) ? "la cena" : "il pranzo";
 }
 
+/** «OK. Fammi il menù» after the confirmation, same step as a bare sì. */
+function wantsTheMenu(text: string): boolean {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[’`´]/g, "'")
+    .replace(/[!?.…,;:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /(?:fammi|preparami|prepara|scrivi|voglio)\s+il\s+men[uù](?![\p{L}\p{N}])/iu.test(
+    normalized,
+  );
+}
+
 function ollamaError(err: unknown): string {
   const message = err instanceof Error ? err.message : "errore sconosciuto";
   return `Ollama non ha scritto il menù. ${message}`;
@@ -67,7 +81,7 @@ async function menuFromOllama(
 export async function answerCustomer(turn: CustomerTurn): Promise<string> {
   const question = turn.question.trim();
   const prior = turn.prior.filter((item) => item.trim().length > 0);
-  if (isBareAffirmation(question)) {
+  if (isBareAffirmation(question) || wantsTheMenu(question)) {
     const acceptance = [...prior].reverse().find((item) =>
       isMealAcceptanceQuestion(item),
     );
