@@ -1,79 +1,70 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { provaFiammettaReply } from "@/lib/agents/prova-reply";
 
-type Turn = {
-  role: "tu" | "fiammetta";
-  text: string;
-  step?: string;
-};
-
+/**
+ * Standalone bench. It never reads or selects a WhatsApp conversation.
+ */
 export function ProvaFiammetta() {
-  const [message, setMessage] = useState("");
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const threadEndRef = useRef<HTMLLIElement | null>(null);
+  const [questions, setQuestions] = useState("");
+  const [draft, setDraft] = useState("");
+  const [replies, setReplies] = useState("");
+  const priorRef = useRef<string[]>([]);
+  const questionsValue = questions ? `${questions}${draft}` : draft;
 
-  useEffect(() => {
-    threadEndRef.current?.scrollIntoView({ block: "nearest" });
-  }, [turns]);
-
-  function writeToFiammetta(event?: FormEvent) {
-    event?.preventDefault();
-    const text = message.trim();
+  function commitQuestion() {
+    const text = draft.trim();
     if (!text) return;
-    const priorTexts = turns.map((turn) => turn.text);
-    const next = provaFiammettaReply(text, priorTexts);
+    const next = provaFiammettaReply(text, priorRef.current);
+    priorRef.current = next
+      ? [...priorRef.current, text, next.draft]
+      : [...priorRef.current, text];
+    setQuestions((prev) => (prev ? `${prev}${text}\n\n` : `${text}\n\n`));
+    setDraft("");
     if (!next) return;
-    setTurns((prev) => [
-      ...prev,
-      { role: "tu", text },
-      { role: "fiammetta", text: next.draft, step: next.note },
-    ]);
-    setMessage("");
+    setReplies((prev) => (prev ? `${prev}\n\n${next.draft}` : next.draft));
   }
 
   return (
     <main className="prova">
       <header className="prova-header">
-        <h1>Chat con Fiammetta</h1>
+        <h1>Prova Fiammetta</h1>
         <p className="muted">
-          Scrivi e premi Invio. Fiammetta risponde subito nel thread. WhatsApp
-          resta fuori: questa pagina non è collegata a Bird.
+          Scrivi gli alimenti e premi Invio. La risposta di Fiammetta compare
+          nel box sotto.
         </p>
       </header>
-      <ol className="prova-thread" aria-live="polite">
-        {turns.length === 0 ? (
-          <li className="prova-empty">Scrivi un messaggio. Fiammetta risponde qui.</li>
-        ) : (
-          turns.map((turn, index) => (
-            <li key={`${turn.role}-${index}`} className={`prova-turn is-${turn.role}`}>
-              <span>{turn.role === "tu" ? "Tu" : "Fiammetta"}</span>
-              {turn.step ? <em>{turn.step}</em> : null}
-              <p>{turn.text}</p>
-            </li>
-          ))
-        )}
-        <li ref={threadEndRef} className="prova-end" aria-hidden="true" />
-      </ol>
-      <form className="prova-form" onSubmit={writeToFiammetta}>
-        <label className="sr-only" htmlFor="prova-message">
-          Scrivi a Fiammetta
-        </label>
+      <label className="prova-box" htmlFor="prova-domande">
+        <span>Domande a Fiammetta</span>
         <textarea
-          id="prova-message"
-          rows={3}
-          value={message}
-          placeholder="Scrivi a Fiammetta e premi Invio"
-          onChange={(event) => setMessage(event.target.value)}
+          id="prova-domande"
+          rows={8}
+          value={questionsValue}
+          placeholder="Scrivi qui e premi Invio"
+          onChange={(event) => {
+            const value = event.target.value;
+            if (!value.startsWith(questions)) return;
+            setDraft(value.slice(questions.length));
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              writeToFiammetta();
+              commitQuestion();
             }
           }}
         />
-      </form>
+      </label>
+      <label className="prova-box" htmlFor="prova-risposte">
+        <span>Risposte di Fiammetta</span>
+        <textarea
+          id="prova-risposte"
+          rows={8}
+          readOnly
+          value={replies}
+          placeholder="Le risposte compaiono qui"
+        />
+      </label>
     </main>
   );
 }

@@ -1422,74 +1422,25 @@ button.bubble {
   margin: 0;
 }
 
-.prova-thread {
-  list-style: none;
-  margin: 0;
-  padding: 0.25rem 0;
+.prova-box {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
-  flex: 1;
+  gap: 0.35rem;
 }
 
-.prova-empty {
+.prova-box span {
+  font-size: 0.78rem;
   color: var(--muted);
-  font-size: 0.9rem;
 }
 
-.prova-end {
-  list-style: none;
-  height: 0;
-  padding: 0;
-  margin: 0;
-  border: 0;
-}
-
-.prova-turn {
-  max-width: 85%;
-  padding: 0.65rem 0.8rem;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-}
-
-.prova-turn span,
-.prova-turn em {
-  display: block;
-  font-size: 0.72rem;
-  color: var(--muted);
-  margin-bottom: 0.25rem;
-}
-
-.prova-turn em {
-  font-style: normal;
-}
-
-.prova-turn p {
-  margin: 0;
-  white-space: pre-wrap;
-}
-
-.prova-turn.is-tu {
-  align-self: flex-end;
-  background: var(--inbound);
-}
-
-.prova-turn.is-fiammetta {
-  align-self: flex-start;
-  background: var(--bg-elevated);
-}
-
-.prova-form {
-  display: block;
-}
-
-.prova-form textarea {
+.prova-box textarea {
   width: 100%;
   resize: vertical;
   font: inherit;
   color: var(--text);
-  background: transparent;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 0.55rem 0.7rem;
+  padding: 0.7rem 0.8rem;
+  white-space: pre-wrap;
 }

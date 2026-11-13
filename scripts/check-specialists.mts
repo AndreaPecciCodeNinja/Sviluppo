@@ -411,8 +411,65 @@ const provaCena = provaFiammettaReply("cena", [
   provaFood?.draft || "",
 ]);
 assert.match(provaCena?.draft || "", /per la cena con Pasta, formaggio, ragù di carne e peperoncino va bene/i);
-const provaOther = provaFiammettaReply("ciao");
-assert.match(provaOther?.draft || "", /Sono Fiammetta/);
+const provaYes = provaFiammettaReply("sì", [
+  "Pasta, formaggio, ragù di carne, peperoncino",
+  provaFood?.draft || "",
+  "cena",
+  provaCena?.draft || "",
+]);
+assert.match(provaYes?.draft || "", /pasta al ragù piccante/i);
+assert.doesNotMatch(
+  provaYes?.draft || "",
+  /Preferisci il pranzo|Preparo la cena con|ti propongo un piatto con|Userò/i,
+);
+const carbonaraList = "uovo, pancetta, pecorino, spaghetti";
+const carbonaraAsk = provaFiammettaReply(carbonaraList);
+const carbonaraSi = provaFiammettaReply("si", [
+  carbonaraList,
+  carbonaraAsk?.draft || "",
+]);
+assert.match(carbonaraSi?.draft || "", /Preferisci il pranzo o la cena/);
+const carbonaraCena = provaFiammettaReply("cena", [
+  carbonaraList,
+  carbonaraAsk?.draft || "",
+  "si",
+  carbonaraSi?.draft || "",
+]);
+assert.match(
+  carbonaraCena?.draft || "",
+  /per la cena con uovo, pancetta, pecorino e spaghetti va bene/i,
+);
+const carbonaraDish = provaFiammettaReply("si", [
+  carbonaraList,
+  carbonaraAsk?.draft || "",
+  "si",
+  carbonaraSi?.draft || "",
+  "cena",
+  carbonaraCena?.draft || "",
+]);
+assert.match(carbonaraDish?.draft || "", /una carbonara/i);
+assert.doesNotMatch(
+  carbonaraDish?.draft || "",
+  /uovo|pancetta|pecorino|spaghetti|ti propongo un piatto con|Userò/i,
+);
+const carbonaraPrior = [
+  carbonaraList,
+  carbonaraAsk?.draft || "",
+  "si",
+  carbonaraSi?.draft || "",
+  "cena",
+  carbonaraCena?.draft || "",
+  "si",
+  carbonaraDish?.draft || "",
+];
+assert.equal(provaFiammettaReply(carbonaraList, carbonaraPrior), null);
+assert.equal(
+  provaFiammettaReply("si", [carbonaraList, carbonaraAsk?.draft || "", "si", carbonaraSi?.draft || ""]),
+  null,
+);
+assert.equal(provaFiammettaReply("cena", carbonaraPrior.slice(0, 6)), null);
+assert.equal(provaFiammettaReply("si", carbonaraPrior), null);
+assert.equal(provaFiammettaReply("ciao"), null);
 assert.equal(provaFiammettaReply("  "), null);
 
 console.log("specialist heuristic checks ok");
