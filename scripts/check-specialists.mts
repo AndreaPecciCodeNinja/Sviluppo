@@ -411,6 +411,17 @@ const provaCena = provaFiammettaReply("cena", [
   provaFood?.draft || "",
 ]);
 assert.match(provaCena?.draft || "", /per la cena con Pasta, formaggio, ragù di carne e peperoncino va bene/i);
+const provaYes = provaFiammettaReply("sì", [
+  "Pasta, formaggio, ragù di carne, peperoncino",
+  provaFood?.draft || "",
+  "cena",
+  provaCena?.draft || "",
+]);
+assert.match(provaYes?.draft || "", /pasta al ragù piccante/i);
+assert.doesNotMatch(
+  provaYes?.draft || "",
+  /Preferisci il pranzo|Preparo la cena con|ti propongo un piatto con|Userò/i,
+);
 const provaOther = provaFiammettaReply("ciao");
 assert.match(provaOther?.draft || "", /Sono Fiammetta/);
 assert.equal(provaFiammettaReply("  "), null);

@@ -32,14 +32,6 @@ export function provaFiammettaReply(
     };
   }
 
-  const mealAsk = mealChoiceFollowUp(text, priorTexts);
-  if (mealAsk) {
-    return {
-      draft: withFiammettaIntro(mealAsk),
-      note: "scelta pasto",
-    };
-  }
-
   const afterMeal = mealFollowUpQuestion(text, priorTexts, displayName);
   if (afterMeal) {
     return {
@@ -61,6 +53,14 @@ export function provaFiammettaReply(
         };
       }
     }
+  }
+
+  const mealAsk = mealChoiceFollowUp(text, priorTexts);
+  if (mealAsk) {
+    return {
+      draft: withFiammettaIntro(mealAsk),
+      note: "scelta pasto",
+    };
   }
 
   return {
