@@ -140,7 +140,7 @@ function isGreetingItem(part: string): boolean {
 }
 
 /** Our own meal question or dish draft. It echoes an older list, it is not one. */
-function isAssistantFoodEcho(text: string): boolean {
+export function isOwnFoodReply(text: string): boolean {
   return (
     /hai elencato questi ingredienti/iu.test(text) ||
     /ti propongo/iu.test(text) ||
@@ -239,7 +239,7 @@ export function ingredientsFromThread(
       if (items.length >= 2) latest = items;
       continue;
     }
-    if (isAssistantFoodEcho(text)) continue;
+    if (isOwnFoodReply(text)) continue;
     if (!looksLikeIngredientList(text) || looksLikeMealQuestion(text)) continue;
     const items = withoutContactName(splitItems(text), displayName);
     if (items.length >= 2) latest = items;
@@ -257,6 +257,14 @@ export function heuristicDish(ingredients: readonly string[]): string | null {
   const blob = ingredients.join(" ");
   if (/uov/iu.test(blob) && /zucchin/iu.test(blob) && /salsicc/iu.test(blob)) {
     return "una frittata di zucchine e salsiccia";
+  }
+  if (
+    /pomodor/iu.test(blob) &&
+    /zucchin/iu.test(blob) &&
+    /melanzan/iu.test(blob) &&
+    /agli/iu.test(blob)
+  ) {
+    return "una caponata di verdure";
   }
   if (/carne/iu.test(blob) && /pane/iu.test(blob)) {
     return "un panino con carne";
@@ -305,6 +313,9 @@ export function buildDishDraft(
   const name = dish.trim().replace(/[.?!]+$/g, "");
   if (/frittata di zucchine e salsiccia/iu.test(name)) {
     return `Per ${mealPhrase} ti propongo ${name}. Con le uova e un goccio di latte la leghiamo in padella.`;
+  }
+  if (/caponata di verdure/iu.test(name)) {
+    return `Per ${mealPhrase} ti propongo ${name}. Le stufiamo in padella con un filo d'olio.`;
   }
   return `Per ${mealPhrase} ti propongo ${name}. Userò ${joinItalian(ingredients)}.`;
 }

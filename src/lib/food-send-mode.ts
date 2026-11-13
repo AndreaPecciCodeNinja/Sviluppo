@@ -4,6 +4,7 @@ export type AutoSendOutcome = "sent" | "window" | "error";
 
 export const FOOD_SEND_MODE_KEY = "food-send-mode";
 export const FOOD_AUTO_SEND_TRIED_KEY = "food-auto-send-tried";
+export const FOOD_AUTO_SENT_TEXTS_KEY = "food-auto-sent-texts";
 
 /** Shown once when WhatsApp refuses a free-form reply. Not retried. */
 export const WINDOW_CLOSED_MESSAGE =
@@ -46,19 +47,40 @@ export function parseTriedSends(
   }
 }
 
+/** Same sentence, ignoring spacing and case, so a poll cannot send it again. */
+export function normalizeOutboundText(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLocaleLowerCase("it");
+}
+
+export function parseSentTexts(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 /**
- * Automatic mode sends the food draft that was just built for this inbound,
- * and only if that id was never attempted (success, 24h window, or other error).
+ * Automatic mode sends the food draft just built for this inbound once.
+ * A later poll, reopen, or new id with the same text does not send again.
  */
 export function shouldAutoSendFoodDraft(input: {
   mode: FoodSendMode;
   messageId: string | null | undefined;
   tried: Readonly<Record<string, AutoSendOutcome>>;
+  text?: string | null;
+  sentTexts?: ReadonlySet<string>;
 }): boolean {
   if (input.mode !== "automatic") return false;
   const id = input.messageId?.trim();
   if (!id) return false;
-  return input.tried[id] == null;
+  if (input.tried[id] != null) return false;
+  const key = normalizeOutboundText(input.text || "");
+  if (key && input.sentTexts?.has(key)) return false;
+  return true;
 }
 
 export function isWindowClosedSendError(error: {

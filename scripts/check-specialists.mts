@@ -15,6 +15,7 @@ import {
   ingredientMealQuestion,
   ingredientsFromThread,
   isBareAffirmation,
+  isOwnFoodReply,
   mealChoiceFollowUp,
   mealDishContext,
   MEAL_CHOICE_DRAFT,
@@ -27,6 +28,7 @@ import {
 import type { RouterIntent } from "../src/lib/agents/types.ts";
 import {
   isWindowClosedSendError,
+  normalizeOutboundText,
   parseFoodSendMode,
   shouldAutoSendFoodDraft,
 } from "../src/lib/food-send-mode.ts";
@@ -251,5 +253,35 @@ assert.equal(
   true,
 );
 assert.equal(isWindowClosedSendError({ message: "network down" }), false);
+const caponataText =
+  "Sono Fiammetta. Per la cena ti propongo una caponata di verdure. Le stufiamo in padella con un filo d'olio.";
+assert.equal(
+  shouldAutoSendFoodDraft({
+    mode: "automatic",
+    messageId: "m2",
+    tried: {},
+    text: caponataText,
+    sentTexts: new Set([normalizeOutboundText(caponataText)]),
+  }),
+  false,
+);
+assert.equal(
+  shouldAutoSendFoodDraft({
+    mode: "automatic",
+    messageId: "m2",
+    tried: { m2: "sent" },
+    text: "altro testo",
+  }),
+  false,
+);
+const veg = mealDishContext("Cena", ["Pomodori, zucchine, melanzane, aglio"]);
+assert.equal(veg?.meal, "cena");
+assert.equal(veg?.dish, "una caponata di verdure");
+const vegDraft = buildDishDraft("cena", veg?.dish || "", veg?.ingredients || []);
+assert.match(vegDraft, /^Per la cena ti propongo una caponata di verdure/);
+assert.match(vegDraft, /filo d'olio/);
+assert.doesNotMatch(vegDraft, /un piatto con|Userò Pomodori/i);
+assert.equal(isOwnFoodReply(withFiammettaIntro(vegDraft)), true);
+assert.equal(isOwnFoodReply("Cena"), false);
 
 console.log("specialist heuristic checks ok");
