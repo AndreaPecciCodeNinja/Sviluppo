@@ -13,11 +13,14 @@ import { Thread } from "./Thread";
 import { fiammettaRouteLabel, withFiammettaIntro } from "@/lib/agents/fiammetta";
 import {
   FOOD_AUTO_SEND_TRIED_KEY,
+  FOOD_AUTO_SENT_TEXTS_KEY,
   FOOD_SEND_MODE_KEY,
   WINDOW_CLOSED_MESSAGE,
   isFoodCustomerDraft,
   isWindowClosedSendError,
+  normalizeOutboundText,
   parseFoodSendMode,
+  parseSentTexts,
   parseTriedSends,
   shouldAutoSendFoodDraft,
   type AutoSendOutcome,
@@ -26,6 +29,7 @@ import {
 import {
   buildDishDraft,
   ingredientMealQuestion,
+  isOwnFoodReply,
   mealChoiceFollowUp,
   mealDishContext,
 } from "@/lib/agents/meal-choice";
@@ -86,7 +90,7 @@ const AUTO_DRAFT_TEMPLATE_IDS = new Set([
  * Bump when auto-draft behavior changes so an inbound id already handled by
  * an older bundle is drafted again once (same browser session / HMR).
  */
-const AUTO_DRAFT_VERSION = "food-dish-8";
+const AUTO_DRAFT_VERSION = "food-dish-9";
 const SUGGEST_TIMEOUT_MS = 25_000;
 const OLLAMA_TIMEOUT_MESSAGE =
   "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
@@ -118,6 +122,7 @@ function findLatestInbound(messages: ChatMessage[]): ChatMessage | null {
   let latest: ChatMessage | null = null;
   for (const message of messages) {
     if (message.direction !== "inbound") continue;
+    if (isOwnFoodReply(message.text)) continue;
     if (!latest) {
       latest = message;
       continue;
@@ -194,6 +199,8 @@ export function ChatApp() {
   sendModeRef.current = sendMode;
   /** Inbound ids already auto-sent, or refused (24h) so a reopen does not retry. */
   const triedSendsRef = useRef<Record<string, AutoSendOutcome>>({});
+  /** Normalized drafts already claimed, so a poll cannot send the same sentence. */
+  const sentTextsRef = useRef<Set<string>>(new Set());
   const windowClosedRef = useRef(false);
 
   const selected = useMemo(
@@ -289,6 +296,9 @@ export function ChatApp() {
       setSendMode(parseFoodSendMode(window.localStorage.getItem(FOOD_SEND_MODE_KEY)));
       triedSendsRef.current = parseTriedSends(
         window.localStorage.getItem(FOOD_AUTO_SEND_TRIED_KEY),
+      );
+      sentTextsRef.current = new Set(
+        parseSentTexts(window.localStorage.getItem(FOOD_AUTO_SENT_TEXTS_KEY)),
       );
     } catch {
       setSendMode("manual");
@@ -507,6 +517,28 @@ export function ChatApp() {
     };
   }
 
+  function rememberSentText(text: string) {
+    const key = normalizeOutboundText(text);
+    if (!key) return;
+    sentTextsRef.current.add(key);
+    const stored = [...sentTextsRef.current].slice(-100);
+    sentTextsRef.current = new Set(stored);
+    try {
+      window.localStorage.setItem(FOOD_AUTO_SENT_TEXTS_KEY, JSON.stringify(stored));
+    } catch {
+      /* the in-memory set still blocks a loop in this page load */
+    }
+  }
+
+  function textsAlreadyOut(): Set<string> {
+    const sent = new Set(sentTextsRef.current);
+    for (const message of messages) {
+      const existing = normalizeOutboundText(message.text);
+      if (existing) sent.add(existing);
+    }
+    return sent;
+  }
+
   function rememberTriedSend(messageId: string, outcome: AutoSendOutcome) {
     const next = { ...triedSendsRef.current, [messageId]: outcome };
     const ids = Object.keys(next);
@@ -553,6 +585,8 @@ export function ChatApp() {
         mode: sendModeRef.current,
         messageId: id,
         tried: triedSendsRef.current,
+        text,
+        sentTexts: textsAlreadyOut(),
       })
     ) {
       if (id && triedSendsRef.current[id] === "window") {
@@ -561,6 +595,7 @@ export function ChatApp() {
       return;
     }
     rememberTriedSend(id, "error");
+    rememberSentText(text);
     if (windowClosedRef.current) {
       rememberTriedSend(id, "window");
       setSendError(WINDOW_CLOSED_MESSAGE);
