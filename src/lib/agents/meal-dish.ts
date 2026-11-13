@@ -5,7 +5,11 @@ import {
   mealDishContext,
   type MealDishContext,
 } from "./meal-choice";
-import { getReplyProvider, type ReplyProvider } from "../reply-provider";
+import {
+  getReplyProvider,
+  replyProviderLabel,
+  type ReplyProvider,
+} from "../reply-provider";
 
 const DISH_PROMPT = [
   "You name one Italian home dish for a WhatsApp draft.",
@@ -49,7 +53,7 @@ async function dishFromModel(ctx: MealDishContext): Promise<{
   try {
     const parsed = extractJsonObject<{ dish?: string }>(
       completed.raw,
-      completed.provider === "ollama" ? "Ollama" : "Claude",
+      replyProviderLabel(completed.provider),
     );
     const dish = typeof parsed.dish === "string" ? parsed.dish.trim() : "";
     if (!acceptableDish(dish)) return null;

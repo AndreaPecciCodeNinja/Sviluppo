@@ -57,11 +57,15 @@ export async function POST(request: NextRequest) {
           message:
             status.provider === "claude"
               ? "Missing ANTHROPIC_API_KEY — set it in .env.local, or set REPLY_PROVIDER=ollama"
-              : "Reply provider is not configured",
+              : status.provider === "openai"
+                ? "Missing OPENAI_API_KEY — set it in .env.local (same key as Whisper), or set REPLY_PROVIDER=ollama"
+                : "Reply provider is not configured",
           code:
             status.provider === "claude"
               ? "missing_anthropic_api_key"
-              : "reply_provider_not_configured",
+              : status.provider === "openai"
+                ? "missing_openai_api_key"
+                : "reply_provider_not_configured",
           provider: status.provider,
         },
       },
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
     const message =
       err instanceof Error ? err.message : "Suggest reply failed";
     const unreachable =
-      /ollama unreachable|cannot reach anthropic|econnrefused|non risponde in tempo/i.test(
+      /ollama unreachable|cannot reach anthropic|cannot reach openai|econnrefused|non risponde in tempo/i.test(
         message,
       );
     return NextResponse.json(

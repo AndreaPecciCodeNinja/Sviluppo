@@ -676,7 +676,7 @@ export function ChatApp() {
         </p>
         <p className="hint">
           Vocali: <code>OPENAI_API_KEY</code>. Reply agent:{" "}
-          <code>REPLY_PROVIDER=ollama|claude</code>. Sentiment:{" "}
+          <code>REPLY_PROVIDER=ollama|claude|openai</code>. Sentiment:{" "}
           <Link href="/sentiment">/sentiment</Link>
         </p>
         {error ? (

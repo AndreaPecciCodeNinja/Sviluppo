@@ -44,7 +44,13 @@ export function OllamaStatusBadge({ health, checking }: Props) {
     );
   }
 
-  const debug = `provider=${health.provider} · reachable=${health.reachable ? "yes" : "no"} · model=${health.modelPresent ? "ok" : "missing"} · reply=${health.active ? "ollama" : "claude"}`;
+  const replyName =
+    health.provider === "openai"
+      ? "OpenAI"
+      : health.provider === "claude"
+        ? "Claude"
+        : "Ollama";
+  const debug = `provider=${health.provider} · reachable=${health.reachable ? "yes" : "no"} · model=${health.modelPresent ? "ok" : "missing"} · reply=${health.provider}`;
 
   if (health.ok) {
     return (
@@ -72,7 +78,7 @@ export function OllamaStatusBadge({ health, checking }: Props) {
       </p>
       {!health.active ? (
         <p className="provider-setup muted">
-          Reply agent attuale: Claude. Per suggerire con Ollama metti{" "}
+          Reply agent attuale: {replyName}. Per suggerire con Ollama metti{" "}
           <code>REPLY_PROVIDER=ollama</code> in <code>.env.local</code> e
           riavvia <code>npm run dev</code>.
         </p>

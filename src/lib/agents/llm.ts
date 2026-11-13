@@ -1,6 +1,7 @@
 import {
   getClaudeConfig,
   getOllamaConfig,
+  getOpenAIReplyConfig,
   getReplyProvider,
   type ReplyProvider,
 } from "../reply-provider";
@@ -196,6 +197,75 @@ async function callOllama(params: {
   return messageContent;
 }
 
+/** OpenAI Chat Completions. Same OPENAI_API_KEY as Whisper. */
+async function callOpenAI(params: {
+  apiKey: string;
+  model: string;
+  system: string;
+  userContent: string;
+}): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${params.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: params.model,
+        temperature: 0,
+        max_tokens: 512,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: params.system },
+          { role: "user", content: params.userContent },
+        ],
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      throw new Error(
+        "OpenAI non risponde in tempo (20s). Riprova con Suggerisci.",
+      );
+    }
+    if (isConnectionError(err)) {
+      throw new Error("Cannot reach OpenAI API — check network connectivity");
+    }
+    throw err;
+  }
+
+  const raw = await response.text();
+  let body: unknown = raw;
+  try {
+    body = JSON.parse(raw) as unknown;
+  } catch {
+    /* keep text */
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof body === "object" &&
+      body &&
+      "error" in body &&
+      typeof (body as { error?: { message?: string } }).error?.message ===
+        "string"
+        ? (body as { error: { message: string } }).error.message
+        : `OpenAI API HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  const content = (
+    body as { choices?: Array<{ message?: { content?: string } }> }
+  ).choices?.[0]?.message?.content;
+  if (!content?.trim()) {
+    throw new Error("OpenAI response had no message content");
+  }
+  return content;
+}
+
 export async function completeWithReplyProvider(params: {
   system: string;
   userText: string;
@@ -210,6 +280,22 @@ export async function completeWithReplyProvider(params: {
     const { baseUrl, model } = getOllamaConfig();
     const raw = await callOllama({
       baseUrl,
+      model,
+      system: params.system,
+      userContent,
+    });
+    return { raw, model, provider };
+  }
+
+  if (provider === "openai") {
+    const { apiKey, model } = getOpenAIReplyConfig();
+    if (!apiKey) {
+      throw new Error(
+        "Missing OPENAI_API_KEY — set it in .env.local (same key as Whisper), or set REPLY_PROVIDER=ollama for local Ollama",
+      );
+    }
+    const raw = await callOpenAI({
+      apiKey,
       model,
       system: params.system,
       userContent,
