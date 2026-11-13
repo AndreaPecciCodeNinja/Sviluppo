@@ -166,7 +166,8 @@ export function isOwnFoodReply(text: string): boolean {
     /preferisci il pranzo o la cena/iu.test(text) ||
     /per (?:il pranzo|la cena) con /iu.test(text) ||
     /preparo (?:il pranzo|la cena|una |un )/iu.test(text) ||
-    /alimenti_non_usati/iu.test(text)
+    /alimenti_non_usati/iu.test(text) ||
+    (/piatto\s*:/iu.test(text) && /preparazione\s*:/iu.test(text))
   );
 }
 

@@ -517,6 +517,7 @@ const chefMenu = {
       piatto: "Spaghetti con uova, pecorino e pepe",
       ingredienti: ["spaghetti", "uova", "pecorino", "pepe"],
       alimento_principale: "spaghetti",
+      preparazione: "Cuoci gli spaghetti e condisci con uova, pecorino e pepe.",
       note: "",
     },
     {
@@ -548,7 +549,11 @@ const badMenu = {
   ...chefMenu,
   menu: chefMenu.menu.map((course) =>
     course.portata === "primo"
-      ? { ...course, ingredienti: [...course.ingredienti, "pomodoro"] }
+      ? {
+          ...course,
+          piatto: "Spaghetti con upva, pecorino e pepe",
+          ingredienti: course.ingredienti.map((item) => (item === "uova" ? "upva" : item)),
+        }
       : course,
   ),
 };
@@ -617,9 +622,11 @@ assert.match(calls[0].system, /al massimo due portate/);
 assert.match(calls[0].system, /Non dedurre allergeni/);
 assert.match(calls[0].system, /alimenti_non_usati/);
 assert.match(calls[0].user, /uova, spaghetti, pecorino e pepe/);
-assert.match(calls[1].user, /Ingrediente non consentito: pomodoro/);
-assert.equal(pepperCena, JSON.stringify(chefMenu, null, 2));
-assert.doesNotMatch(pepperCena, /elenchi gli alimenti|allergen/i);
+assert.match(calls[1].user, /Il nome «upva» non combacia con «uova»/);
+assert.match(pepperCena, /^Antipasto\nPiatto: nessuno\nIngredienti: nessuno\nPreparazione: Con questi alimenti non c'è un antipasto\./);
+assert.match(pepperCena, /Primo\nPiatto: Spaghetti con uova, pecorino e pepe\nIngredienti: spaghetti, uova, pecorino, pepe\nPreparazione: Cuoci gli spaghetti/);
+assert.doesNotMatch(pepperCena, /\{|\}|"portata"|alimenti_non_usati/);
+assert.doesNotMatch(pepperCena, /elenchi gli alimenti|allergen|upva/i);
 
 calls = [];
 globalThis.fetch = (async () => {
@@ -651,7 +658,9 @@ try {
 } finally {
   globalThis.fetch = originalFetch;
 }
-assert.equal(menuReply, JSON.stringify(chefMenu, null, 2));
+assert.match(menuReply, /Piatto: Spaghetti con uova, pecorino e pepe/);
+assert.match(menuReply, /Preparazione:/);
+assert.doesNotMatch(menuReply, /\{|alimenti_non_usati/);
 assert.match(calls[0].user, /uova/);
 assert.match(calls[0].user, /pepe/);
 assert.match(calls[0].user, /pecorino/);

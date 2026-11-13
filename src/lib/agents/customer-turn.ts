@@ -33,8 +33,10 @@ const CHEF_PROMPT = [
   "Sei uno chef domestico: la persona chiede cosa cucinare con quello che ha.",
   "Usa SOLO gli alimenti dati, più sale, pepe, olio e acqua.",
   "Portate, in quest'ordine: antipasto, primo, secondo, contorno, dolce.",
-  "Se manca una portata, piatto è null e note spiega perché.",
+  "Se manca una portata, piatto è null e note spiega perché. preparazione è vuota.",
   "Lo stesso alimento principale sta in al massimo due portate.",
+  "Nei campi ingredienti, alimento_principale, alimenti_non_usati e nel testo del piatto copia i nomi esattamente come negli alimenti dati. Non cambiare le lettere.",
+  "preparazione spiega in italiano come si cucina il piatto.",
   "Rispetta i vincoli.",
   "Non dedurre allergeni. Non scrivere avvertenze sugli allergeni.",
   "Output solo JSON: menu, alimenti_non_usati, note.",
@@ -51,12 +53,13 @@ const MENU_SCHEMA: Record<string, unknown> = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["portata", "piatto", "ingredienti", "alimento_principale", "note"],
+        required: ["portata", "piatto", "ingredienti", "alimento_principale", "preparazione", "note"],
         properties: {
           portata: { type: "string", enum: [...COURSES] },
           piatto: { type: ["string", "null"] },
           ingredienti: { type: "array", items: { type: "string" } },
           alimento_principale: { type: ["string", "null"] },
+          preparazione: { type: "string" },
           note: { type: "string" },
         },
       },
@@ -71,6 +74,7 @@ type Course = {
   piatto: string | null;
   ingredienti: string[];
   alimento_principale: string | null;
+  preparazione: string;
   note: string;
 };
 
@@ -116,28 +120,55 @@ function claudeError(err: unknown): string {
   return `Claude non ha scritto il menù. ${message}`;
 }
 
-function stem(value: string): string {
-  return value.toLocaleLowerCase("it").trim().replace(/[aeio]$/u, "");
+function canonicalFood(item: string, allowed: readonly string[]): string | null {
+  const value = item.trim().toLocaleLowerCase("it");
+  if (!value) return null;
+  return allowed.find((food) => food.toLocaleLowerCase("it") === value) ?? null;
 }
 
-function sameFood(left: string, right: string): boolean {
-  if (left === right) return true;
-  const a = stem(left);
-  const b = stem(right);
-  return a.length >= 3 && a === b;
+function editDistance(left: string, right: string): number {
+  const a = left.toLocaleLowerCase("it");
+  const b = right.toLocaleLowerCase("it");
+  const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    let previous = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const current = row[j];
+      row[j] =
+        a[i - 1] === b[j - 1]
+          ? previous
+          : Math.min(previous, row[j], row[j - 1]) + 1;
+      previous = current;
+    }
+  }
+  return row[b.length];
 }
 
-function isAllowedFood(item: string, allowed: readonly string[]): boolean {
-  const value = item.toLocaleLowerCase("it").trim();
-  if (!value) return true;
-  return allowed.some((food) => {
-    const name = food.toLocaleLowerCase("it").trim();
-    if (sameFood(value, name)) return true;
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "iu").test(
-      value,
-    );
-  });
+function nameMiss(token: string, allowed: readonly string[]): string | null {
+  const value = token.trim();
+  if (value.length < 4 || canonicalFood(value, allowed)) return null;
+  let closest: string | null = null;
+  let best = 3;
+  for (const food of allowed) {
+    if (food.length < 4) continue;
+    const distance = editDistance(value, food);
+    if (distance < best) {
+      best = distance;
+      closest = food;
+    }
+  }
+  return closest;
+}
+
+function mismatchedNames(text: string, allowed: readonly string[]): string[] {
+  const tokens = text.match(/[\p{L}][\p{L}'’]*/gu) ?? [];
+  const problems: string[] = [];
+  for (const token of tokens) {
+    const expected = nameMiss(token, allowed);
+    if (expected) problems.push(`Il nome «${token}» non combacia con «${expected}».`);
+  }
+  return problems;
 }
 
 function asCourse(value: unknown): Course | null {
@@ -160,11 +191,13 @@ function asCourse(value: unknown): Course | null {
         ? row.alimento_principale.trim() || null
         : null;
   const note = typeof row.note === "string" ? row.note.trim() : "";
+  const preparazione = typeof row.preparazione === "string" ? row.preparazione.trim() : "";
   return {
     portata,
     piatto,
     ingredienti,
     alimento_principale: alimento,
+    preparazione,
     note,
   };
 }
@@ -193,12 +226,12 @@ function menuProblems(menu: ChefMenu, ingredients: readonly string[]): string[] 
   const allowed = [...ingredients, ...PANTRY];
   const problems: string[] = [];
   const seen = new Set<string>();
+  const mains = new Map<string, number>();
   for (const course of COURSES) {
     if (!menu.menu.some((row) => row.portata.toLocaleLowerCase("it") === course)) {
       problems.push(`Manca la portata ${course}.`);
     }
   }
-  const mains = new Map<string, number>();
   for (const row of menu.menu) {
     const key = row.portata.toLocaleLowerCase("it");
     if (seen.has(key)) problems.push(`Portata ripetuta: ${row.portata}.`);
@@ -207,29 +240,80 @@ function menuProblems(menu: ChefMenu, ingredients: readonly string[]): string[] 
       problems.push(`La portata ${row.portata} ha piatto null senza note.`);
     }
     for (const item of row.ingredienti) {
-      if (!isAllowedFood(item, allowed)) {
-        problems.push(`Ingrediente non consentito: ${item}.`);
+      if (!canonicalFood(item, allowed)) {
+        const expected = nameMiss(item, allowed);
+        problems.push(
+          expected
+            ? `Il nome «${item}» non combacia con «${expected}».`
+            : `Ingrediente non consentito: ${item}.`,
+        );
       }
     }
-    if (row.alimento_principale && !isAllowedFood(row.alimento_principale, allowed)) {
-      problems.push(`Ingrediente non consentito: ${row.alimento_principale}.`);
+    if (row.alimento_principale && !canonicalFood(row.alimento_principale, allowed)) {
+      const expected = nameMiss(row.alimento_principale, allowed);
+      problems.push(
+        expected
+          ? `Il nome «${row.alimento_principale}» non combacia con «${expected}».`
+          : `Ingrediente non consentito: ${row.alimento_principale}.`,
+      );
     }
+    if (row.piatto) problems.push(...mismatchedNames(row.piatto, allowed));
+    if (row.preparazione) problems.push(...mismatchedNames(row.preparazione, allowed));
     if (row.piatto && row.alimento_principale) {
-      const main = stem(row.alimento_principale);
+      const main = row.alimento_principale.toLocaleLowerCase("it");
       mains.set(main, (mains.get(main) ?? 0) + 1);
     }
   }
   for (const item of menu.alimenti_non_usati) {
-    if (!isAllowedFood(item, allowed)) {
-      problems.push(`Ingrediente non consentito: ${item}.`);
+    if (!canonicalFood(item, ingredients)) {
+      const expected = nameMiss(item, ingredients);
+      problems.push(
+        expected
+          ? `Il nome «${item}» non combacia con «${expected}».`
+          : `Ingrediente non consentito: ${item}.`,
+      );
     }
   }
+  if (menu.note) problems.push(...mismatchedNames(menu.note, allowed));
   for (const [main, count] of mains) {
     if (count > 2) {
       problems.push(`Alimento principale «${main}» in più di due portate.`);
     }
   }
   return problems;
+}
+
+function formatMenu(menu: ChefMenu, ingredients: readonly string[]): string {
+  const allowed = [...ingredients, ...PANTRY];
+  const lines: string[] = [];
+  for (const course of COURSES) {
+    const row = menu.menu.find((item) => item.portata.toLocaleLowerCase("it") === course);
+    const title = course.charAt(0).toLocaleUpperCase("it") + course.slice(1);
+    if (!row || row.piatto === null) {
+      const why = row?.preparazione || row?.note || "Portata non prevista.";
+      lines.push(title, "Piatto: nessuno", "Ingredienti: nessuno", `Preparazione: ${why}`, "");
+      continue;
+    }
+    const foods = row.ingredienti
+      .map((item) => canonicalFood(item, allowed) ?? item.trim())
+      .filter(Boolean);
+    const steps = row.preparazione || row.note || "nessuna";
+    lines.push(
+      title,
+      `Piatto: ${row.piatto}`,
+      `Ingredienti: ${foods.length ? foods.join(", ") : "nessuno"}`,
+      `Preparazione: ${steps}`,
+      "",
+    );
+  }
+  if (menu.alimenti_non_usati.length) {
+    const unused = menu.alimenti_non_usati
+      .map((item) => canonicalFood(item, ingredients) ?? item.trim())
+      .filter(Boolean);
+    lines.push(`Alimenti non usati: ${unused.join(", ")}`, "");
+  }
+  if (menu.note) lines.push(menu.note);
+  return lines.join("\n").trim();
 }
 
 async function askChef(
@@ -270,7 +354,7 @@ async function chefMenu(
   const first = readMenu(raw);
   const firstProblems = typeof first === "string" ? [first] : menuProblems(first, ingredients);
   if (typeof first !== "string" && firstProblems.length === 0) {
-    return JSON.stringify(first, null, 2);
+    return formatMenu(first, ingredients);
   }
   let secondRaw: string;
   try {
@@ -291,7 +375,7 @@ async function chefMenu(
   const secondProblems =
     typeof second === "string" ? [second] : menuProblems(second, ingredients);
   if (typeof second !== "string" && secondProblems.length === 0) {
-    return JSON.stringify(second, null, 2);
+    return formatMenu(second, ingredients);
   }
   return `Claude non ha scritto il menù. ${secondProblems.join(" ")}`;
 }
