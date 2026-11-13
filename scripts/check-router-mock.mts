@@ -100,6 +100,23 @@ assert.match(
 assert.match(grocery.draft, /pranzo o la cena/i);
 assert.doesNotMatch(grocery.draft, /Mi servirebbe|Andrea/);
 
+const callsBeforeLunchPlate = providerCalls;
+const lunchPlate = await routeInboundMessage("Sì, preparami il pranzo.", {
+  priorTexts: [
+    "Mi servirebbe del latte, delle uova, due zucchine e una salsiccia",
+    "Sono Fiammetta. Hai elencato questi ingredienti: latte, uova, zucchine, salsiccia.\nVuoi che ti prepari il pranzo o la cena con questi?",
+  ],
+});
+assert.equal(providerCalls, callsBeforeLunchPlate);
+assert.equal(lunchPlate.templateId, "food_dish_proposal");
+assert.equal(lunchPlate.model, "heuristic");
+assert.match(
+  lunchPlate.draft,
+  /^Sono Fiammetta\. Per il pranzo ti propongo un piatto con latte, uova, zucchine e salsiccia/,
+);
+assert.match(lunchPlate.draft, /Userò latte, uova, zucchine e salsiccia/);
+assert.doesNotMatch(lunchPlate.draft, /torta|carne|Andrea|Failed to fetch/i);
+
 const generic = await routeInboundMessage("ciao, grazie");
 assert.equal(generic.specialistId, "generic");
 assert.equal(generic.routeLabel, "Fiammetta → Generico");
