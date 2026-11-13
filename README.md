@@ -30,7 +30,7 @@ Set `BIRD_WHATSAPP_PHONE_NUMBER=+393337802795` so list/send calls scope to this 
 - **Select inbound message** → editable composer box; **voice notes / audio** download via Bird media API and transcribe with OpenAI Whisper (`language=it`)
 - **Reply agent (Claude or local Ollama)** — classifies the box text, picks a template from `config/reply-templates.json`, fills slots (e.g. food ingredients → pranzo/cena ask), shows editable draft before Bird send
 - **Auto-bozza ultimo inbound** — opening a chat (or a new inbound on poll) selects the latest inbound and asks the **message router** for a specialist draft; never auto-sends; **Suggerisci risposta** remains a manual override
-- **Router + specialists** — each new inbound is classified (`appointment`, `food_meal`, `generic`). The composer shows a badge such as `Router → Appuntamenti` or `Router → Cibo`. Food reuses the existing ingredient template; appointments draft a confirmation or a question; generic never auto-fills
+- **Fiammetta + specialists** — Fiammetta classifies each inbound (`appointment`, `food_meal`, `generic`) and hands it to one specialist. She does not do that specialist work. The composer badge is `Fiammetta → Appuntamenti` or `Fiammetta → Cibo`. Customer drafts start with “Sono Fiammetta.” and then the specialist text. Food reuses the existing ingredient template; appointments draft a confirmation or a question; generic never auto-fills
 - **Local chat memory (LangChain + SQLite)** — per-contact facts + recent snippets in `.data/memory.sqlite` (no cloud keys); injected into suggest-reply; UI panel to view/edit / **Salva fatto**
 
 ## Quick start
@@ -81,7 +81,7 @@ Requires `OPENAI_API_KEY` in `.env.local` for step 4. Without it, text selection
 3. The active provider (`REPLY_PROVIDER`) chooses a template from `config/reply-templates.json` and fills slots.
 4. The composer shows the draft (editable). Review, then **Send** via Bird — never auto-sent.
 
-**Auto-bozza:** on conversation open / new inbound (poll), the UI selects the latest inbound once per message id and calls the router (`Router · bozza automatica…`). A draft is applied only when the specialist allows it (`food_ingredients_meal`, or the appointments specialist). Generic stays in the box until **Suggerisci risposta**. The composer badge names the specialist (`Router → Cibo`, `Router → Appuntamenti`, `Router → Generico`). Nothing is sent to WhatsApp until **Send**.
+**Auto-bozza:** on conversation open / new inbound (poll), the UI selects the latest inbound once per message id and Fiammetta hands it to a specialist (`Fiammetta · bozza automatica…`). A draft is applied only when the specialist allows it (`food_ingredients_meal`, the meal-choice question, the dish proposal, or the appointments specialist). Generic stays in the box until **Suggerisci risposta**. The composer badge is `Fiammetta → Cibo`, `Fiammetta → Appuntamenti`, or `Fiammetta → Generico`. A customer-facing draft starts with “Sono Fiammetta.” Nothing is sent to WhatsApp until **Send**.
 
 Example food flow: inbound “pomodori, mozzarella, basilico, olio” → template `food_ingredients_meal` →  
 “Hai elencato questi ingredienti: pomodori, mozzarella, basilico, olio. Vuoi che ti prepari il pranzo o la cena…?”
@@ -102,7 +102,7 @@ Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `wh
 | `appointments` | appointment, time, “ci vediamo” | yes — confirmation if day and time are present, otherwise a question |
 | `generic` | anything else | no — short ack only if you press **Suggerisci risposta** |
 
-Example: inbound “Vorrei un appuntamento martedì alle 15” → badge `Router → Appuntamenti` → editable draft “Perfetto — segno un appuntamento per martedì alle 15:00. Confermi?”. Review, then Send.
+Example: inbound “Vorrei un appuntamento martedì alle 15” → badge `Fiammetta → Appuntamenti` → editable draft “Sono Fiammetta. Perfetto — segno un appuntamento per martedì alle 15:00. Confermi?”. Review, then Send.
 
 Add a specialist by appending an entry (`id`, `match`, `prompt`, `draft`) in `src/lib/agents/specialists.ts`. Optional env toggles:
 

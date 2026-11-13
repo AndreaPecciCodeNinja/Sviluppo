@@ -48,10 +48,10 @@ export function Composer({
     : statusLabel
       ? statusLabel
       : suggesting
-        ? "Router sta scegliendo lo specialista…"
+        ? "Fiammetta sta affidando lo specialista…"
         : windowClosed
           ? "Finestra 24h chiusa / window closed — serve inbound o template Bird"
-          : "Type a reply — il router prepara la bozza, oppure Suggerisci risposta…";
+          : "Type a reply — Fiammetta prepara la bozza, oppure Suggerisci risposta…";
 
   return (
     <form className="composer" onSubmit={handleSubmit}>
