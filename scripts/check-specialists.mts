@@ -24,6 +24,7 @@ import {
   mealFollowUpQuestion,
   MEAL_CHOICE_DRAFT,
 } from "../src/lib/agents/meal-choice.ts";
+import { answerCustomer } from "../src/lib/agents/customer-turn.ts";
 import { provaFiammettaReply } from "../src/lib/agents/prova-reply.ts";
 import {
   heuristicIntent,
@@ -483,5 +484,265 @@ const nextCena = provaFiammettaReply("cena", [
 assert.match(nextCena?.draft || "", /per la cena con pomodori, mozzarella, basilico e olio va bene/i);
 assert.equal(provaFiammettaReply("ciao"), null);
 assert.equal(provaFiammettaReply("  "), null);
+const manualAsk = await answerCustomer({
+  question: "uovo, pancetta, pecorino, spaghetti",
+  prior: [],
+});
+assert.match(manualAsk, /pranzo o la cena/);
+const manualOther = await answerCustomer({
+  question: "che ore sono?",
+  prior: [],
+});
+assert.match(manualOther, /che ore sono\?/);
+const pepperPrior: string[] = [];
+const pepperAsk = await answerCustomer({
+  question: "uova, spaghetti, pecorino, pepe",
+  prior: pepperPrior,
+});
+pepperPrior.push("uova, spaghetti, pecorino, pepe", pepperAsk);
+const pepperSi = await answerCustomer({ question: "si", prior: pepperPrior });
+pepperPrior.push("si", pepperSi);
+const originalFetch = globalThis.fetch;
+const chefMenu = {
+  menu: [
+    {
+      portata: "antipasto",
+      piatto: null,
+      ingredienti: [],
+      alimento_principale: null,
+      note: "Con questi alimenti non c'è un antipasto.",
+    },
+    {
+      portata: "primo",
+      piatto: "Spaghetti con uova, pecorino e pepe",
+      ingredienti: ["spaghetti", "uova", "pecorino", "pepe"],
+      alimento_principale: "spaghetti",
+      preparazione: "Cuoci gli spaghetti e condisci con uova, pecorino e pepe.",
+      note: "",
+    },
+    {
+      portata: "secondo",
+      piatto: null,
+      ingredienti: [],
+      alimento_principale: null,
+      note: "Manca un secondo.",
+    },
+    {
+      portata: "contorno",
+      piatto: null,
+      ingredienti: [],
+      alimento_principale: null,
+      note: "Manca un contorno.",
+    },
+    {
+      portata: "dolce",
+      piatto: null,
+      ingredienti: [],
+      alimento_principale: null,
+      note: "Manca un dolce.",
+    },
+  ],
+  alimenti_non_usati: [],
+  note: "",
+};
+const badMenu = {
+  ...chefMenu,
+  menu: chefMenu.menu.map((course) =>
+    course.portata === "primo"
+      ? {
+          ...course,
+          piatto: "Spaghetti con upva, pecorino e pepe",
+          ingredienti: course.ingredienti.map((item) => (item === "uova" ? "upva" : item)),
+        }
+      : course,
+  ),
+};
+let calls: Array<{
+  url: string;
+  model: string;
+  temperature: unknown;
+  format: unknown;
+  system: string;
+  user: string;
+  hasKey: boolean;
+}> = [];
+function mockChef(contents: string[]) {
+  let n = 0;
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      model?: string;
+      temperature?: unknown;
+      system?: string;
+      output_config?: { format?: unknown };
+      messages?: Array<{ content?: string }>;
+    };
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    calls.push({
+      url: String(url),
+      model: body.model ?? "",
+      temperature: "temperature" in body ? body.temperature : undefined,
+      format: body.output_config?.format,
+      system: body.system ?? "",
+      user: body.messages?.[0]?.content ?? "",
+      hasKey: Boolean(headers["x-api-key"]),
+    });
+    const content = contents[Math.min(n, contents.length - 1)];
+    n += 1;
+    return new Response(
+      JSON.stringify({ content: [{ type: "text", text: content }] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+}
+const savedKey = process.env.ANTHROPIC_API_KEY;
+delete process.env.ANTHROPIC_API_KEY;
+const missingKey = await answerCustomer({ question: "cena", prior: pepperPrior });
+assert.match(missingKey, /Manca ANTHROPIC_API_KEY nell'ambiente/);
+assert.doesNotMatch(missingKey, /incolla/i);
+process.env.ANTHROPIC_API_KEY = "test-key";
+calls = [];
+mockChef([JSON.stringify(badMenu), JSON.stringify(chefMenu)]);
+let pepperCena = "";
+try {
+  pepperCena = await answerCustomer({ question: "cena", prior: pepperPrior });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.equal(calls.length, 2);
+assert.equal(calls[0].url, "https://api.anthropic.com/v1/messages");
+assert.equal(calls[0].model, "claude-opus-5-5");
+assert.equal(calls[0].temperature, undefined);
+assert.equal(calls[0].hasKey, true);
+assert.equal((calls[0].format as { type?: string }).type, "json_schema");
+assert.ok((calls[0].format as { schema?: { properties?: { menu?: unknown } } }).schema?.properties?.menu);
+assert.match(calls[0].system, /Usa SOLO gli alimenti dati, più sale, pepe, olio e acqua/);
+assert.match(calls[0].system, /antipasto, primo, secondo, contorno, dolce/);
+assert.match(calls[0].system, /piatto è null e note/);
+assert.match(calls[0].system, /al massimo due portate/);
+assert.match(calls[0].system, /Non dedurre allergeni/);
+assert.match(calls[0].system, /alimenti_non_usati/);
+assert.match(calls[0].user, /uova, spaghetti, pecorino e pepe/);
+assert.match(calls[1].user, /Il nome «upva» non combacia con «uova»/);
+assert.match(pepperCena, /^Antipasto\nPiatto: nessuno\nIngredienti: nessuno/);
+assert.match(pepperCena, /Primo\nPiatto: Spaghetti con uova, pecorino e pepe\nIngredienti: spaghetti, uova, pecorino, pepe/);
+assert.doesNotMatch(pepperCena, /Preparazione|Cuoci|\{|\}|"portata"|alimenti_non_usati/);
+assert.doesNotMatch(pepperCena, /elenchi gli alimenti|allergen|upva/i);
+
+calls = [];
+globalThis.fetch = (async () => {
+  throw new Error("Cannot reach Anthropic API");
+}) as typeof fetch;
+let claudeDown = "";
+try {
+  claudeDown = await answerCustomer({ question: "cena", prior: pepperPrior });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.match(claudeDown, /Claude non ha scritto il menù/);
+assert.match(claudeDown, /Anthropic/i);
+assert.equal(calls.length, 0);
+
+const menuPrior = [
+  "uova, spaghetti, pepe, pecorino",
+  "Vuoi che ti prepari il pranzo o la cena?",
+  "Per la cena con uova, spaghetti, pepe e pecorino va bene?",
+];
+calls = [];
+mockChef([JSON.stringify(chefMenu)]);
+let menuReply = "";
+try {
+  menuReply = await answerCustomer({
+    question: "OK. Fammi il menù",
+    prior: menuPrior,
+  });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.match(menuReply, /Piatto: Spaghetti con uova, pecorino e pepe/);
+assert.doesNotMatch(menuReply, /Preparazione|Cuoci|\{|alimenti_non_usati/);
+assert.match(calls[0].user, /uova/);
+assert.match(calls[0].user, /pepe/);
+assert.match(calls[0].user, /pecorino/);
+assert.doesNotMatch(menuReply, /elenchi gli alimenti/);
+
+const againPrior = [...menuPrior, "OK. Fammi il menù", menuReply];
+calls = [];
+const againAnswer = "Resto sulla cena con uova, spaghetti, pepe e pecorino.";
+globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+  const body = JSON.parse(String(init?.body ?? "{}")) as {
+    system?: string;
+    messages?: Array<{ content?: string }>;
+  };
+  calls.push({
+    url: String(_url),
+    model: "",
+    temperature: undefined,
+    format: undefined,
+    system: body.system ?? "",
+    user: body.messages?.[0]?.content ?? "",
+    hasKey: false,
+  });
+  return new Response(
+    JSON.stringify({ content: [{ type: "text", text: againAnswer }] }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}) as typeof fetch;
+let againReply = "";
+try {
+  againReply = await answerCustomer({ question: "e dopo?", prior: againPrior });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.equal(againReply, againAnswer);
+assert.match(calls[0].system, /Non chiedere gli ingredienti/i);
+assert.match(calls[0].system, /Non descrivere come si prepara/i);
+assert.match(calls[0].user, /Pasto: la cena/);
+assert.match(calls[0].user, /uova, spaghetti, pepe e pecorino/);
+assert.match(calls[0].user, /Ha già detto sì/);
+assert.match(calls[0].user, /Nuova frase: e dopo\?/);
+assert.doesNotMatch(againReply, /elenchi gli alimenti/);
+
+const peoplePrior = [
+  "uova, spaghetti, pepe, pecorino",
+  "Vuoi che ti prepari il pranzo o la cena?",
+  "siamo in 4, niente piccante",
+];
+calls = [];
+globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+  const body = JSON.parse(String(init?.body ?? "{}")) as {
+    system?: string;
+    messages?: Array<{ content?: string }>;
+  };
+  calls.push({
+    url: String(_url),
+    model: "",
+    temperature: undefined,
+    format: undefined,
+    system: body.system ?? "",
+    user: body.messages?.[0]?.content ?? "",
+    hasKey: false,
+  });
+  return new Response(
+    JSON.stringify({ content: [{ type: "text", text: "Va bene, in 4, senza piccante." }] }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}) as typeof fetch;
+let peopleReply = "";
+try {
+  peopleReply = await answerCustomer({
+    question: "e il dolce lo saltiamo",
+    prior: peoplePrior,
+  });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.match(calls[0].user, /uova, spaghetti, pepe e pecorino/);
+assert.match(calls[0].user, /Persone: 4/);
+assert.match(calls[0].user, /niente piccante/);
+assert.match(calls[0].user, /già chiesto, non ancora scelto/);
+assert.match(calls[0].system, /Non chiedere gli ingredienti/i);
+assert.doesNotMatch(peopleReply, /elenchi gli alimenti/);
+if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+else process.env.ANTHROPIC_API_KEY = savedKey;
 
 console.log("specialist heuristic checks ok");

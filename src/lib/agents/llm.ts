@@ -57,7 +57,20 @@ async function callClaude(params: {
   model: string;
   system: string;
   userContent: string;
+  maxTokens?: number;
+  schema?: Record<string, unknown>;
 }): Promise<string> {
+  const payload: Record<string, unknown> = {
+    model: params.model,
+    max_tokens: params.maxTokens ?? 512,
+    system: params.system,
+    messages: [{ role: "user", content: params.userContent }],
+  };
+  if (params.schema) {
+    payload.output_config = {
+      format: { type: "json_schema", schema: params.schema },
+    };
+  }
   let response: Response;
   try {
     response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -65,15 +78,9 @@ async function callClaude(params: {
       headers: {
         "content-type": "application/json",
         "x-api-key": params.apiKey,
-        "anthropic-version": "2023-06-01",
+        "anthropic-version": params.schema ? "2026-10-21" : "2023-06-01",
       },
-      body: JSON.stringify({
-        model: params.model,
-        max_tokens: 512,
-        temperature: 0,
-        system: params.system,
-        messages: [{ role: "user", content: params.userContent }],
-      }),
+      body: JSON.stringify(payload),
       cache: "no-store",
       signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
@@ -129,23 +136,31 @@ async function callOllama(params: {
   model: string;
   system: string;
   userContent: string;
+  /** `text` leaves the reply as written. An object is a JSON schema. */
+  format?: "json" | "text" | Record<string, unknown>;
+  temperature?: number;
 }): Promise<string> {
   const url = `${params.baseUrl}/api/chat`;
+  const payload: Record<string, unknown> = {
+    model: params.model,
+    stream: false,
+    options: { temperature: params.temperature ?? 0 },
+    messages: [
+      { role: "system", content: params.system },
+      { role: "user", content: params.userContent },
+    ],
+  };
+  if (params.format && typeof params.format === "object") {
+    payload.format = params.format;
+  } else if (params.format !== "text") {
+    payload.format = "json";
+  }
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model: params.model,
-        stream: false,
-        format: "json",
-        options: { temperature: 0 },
-        messages: [
-          { role: "system", content: params.system },
-          { role: "user", content: params.userContent },
-        ],
-      }),
+      body: JSON.stringify(payload),
       cache: "no-store",
       signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
@@ -194,6 +209,50 @@ async function callOllama(params: {
     throw new Error("Ollama response had no message content");
   }
   return messageContent;
+}
+
+/** Always Ollama, even when the reply provider is Claude. */
+export async function completeWithOllama(params: {
+  system: string;
+  userText: string;
+  /** When false, Ollama returns the menu as text, not a JSON object. */
+  json?: boolean;
+  /** JSON schema sent as Ollama `format`. */
+  schema?: Record<string, unknown>;
+  temperature?: number;
+}): Promise<{ raw: string; model: string; baseUrl: string }> {
+  const { baseUrl, model } = getOllamaConfig();
+  const raw = await callOllama({
+    baseUrl,
+    model,
+    system: params.system,
+    userContent: params.userText,
+    format: params.schema ?? (params.json === false ? "text" : "json"),
+    temperature: params.temperature,
+  });
+  return { raw, model, baseUrl };
+}
+
+/** Chef menu. Larger Claude model, JSON schema. Never prints the API key. */
+export async function completeWithClaude(params: {
+  system: string;
+  userText: string;
+  schema?: Record<string, unknown>;
+}): Promise<{ raw: string; model: string }> {
+  const { apiKey } = getClaudeConfig();
+  if (!apiKey) {
+    throw new Error("Manca ANTHROPIC_API_KEY nell'ambiente.");
+  }
+  const model = process.env.ANTHROPIC_CHEF_MODEL?.trim() || "claude-opus-5-5";
+  const raw = await callClaude({
+    apiKey,
+    model,
+    system: params.system,
+    userContent: params.userText,
+    maxTokens: params.schema ? 2048 : 1024,
+    schema: params.schema,
+  });
+  return { raw, model };
 }
 
 export async function completeWithReplyProvider(params: {

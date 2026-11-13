@@ -165,7 +165,9 @@ export function isOwnFoodReply(text: string): boolean {
     /vuoi che ti prepari il\s+\*?pranzo/iu.test(text) ||
     /preferisci il pranzo o la cena/iu.test(text) ||
     /per (?:il pranzo|la cena) con /iu.test(text) ||
-    /preparo (?:il pranzo|la cena|una |un )/iu.test(text)
+    /preparo (?:il pranzo|la cena|una |un )/iu.test(text) ||
+    /alimenti_non_usati/iu.test(text) ||
+    (/piatto\s*:/iu.test(text) && /ingredienti\s*:/iu.test(text))
   );
 }
 
@@ -324,6 +326,14 @@ export function heuristicDish(ingredients: readonly string[]): string | null {
     /pancett/iu.test(blob) &&
     /pecorin/iu.test(blob) &&
     /spaghetti/iu.test(blob)
+  ) {
+    return "una carbonara";
+  }
+  if (
+    /uov/iu.test(blob) &&
+    /spaghetti/iu.test(blob) &&
+    /pecorin/iu.test(blob) &&
+    /(?<![\p{L}\p{N}])pepe(?![\p{L}\p{N}])/iu.test(blob)
   ) {
     return "una carbonara";
   }
