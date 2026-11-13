@@ -11,6 +11,7 @@ import {
 } from "./OllamaStatusBadge";
 import { Thread } from "./Thread";
 import { fiammettaRouteLabel, withFiammettaIntro } from "@/lib/agents/fiammetta";
+import { provaFiammettaReply, foodSequencePhase } from "@/lib/agents/prova-reply";
 import {
   FOOD_AUTO_SEND_TRIED_KEY,
   FOOD_AUTO_SENT_TEXTS_KEY,
@@ -29,11 +30,8 @@ import {
 import {
   bareMealChoice,
   chosenMeal,
-  ingredientMealQuestion,
   isOwnFoodReply,
   mealAcceptedDraft,
-  mealChoiceFollowUp,
-  mealFollowUpQuestion,
 } from "@/lib/agents/meal-choice";
 import type {
   BirdConfigStatus,
@@ -87,12 +85,13 @@ const AUTO_DRAFT_TEMPLATE_IDS = new Set([
   "food_ingredients_meal",
   "food_meal_choice",
   "food_meal_followup",
+  "food_named_dish",
 ]);
 /**
  * Bump when auto-draft behavior changes so an inbound id already handled by
  * an older bundle is drafted again once (same browser session / HMR).
  */
-const AUTO_DRAFT_VERSION = "food-chain-1";
+const AUTO_DRAFT_VERSION = "food-sequence-1";
 const SUGGEST_TIMEOUT_MS = 25_000;
 const OLLAMA_TIMEOUT_MESSAGE =
   "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
@@ -508,6 +507,10 @@ export function ChatApp() {
       );
       return;
     }
+    if (foodSequenceQuiet(inbound, message)) {
+      setSelectedMessage(message);
+      return;
+    }
     await prepareInboundSelection(message);
   }
 
@@ -515,6 +518,14 @@ export function ChatApp() {
     composerWriteRef.current += 1;
     programmaticDraftRef.current = next;
     setDraft(next);
+  }
+
+  function threadPriorTexts(sourceMessage?: ChatMessage | null): string[] {
+    return messages
+      .filter((message) => !sourceMessage || message.id !== sourceMessage.id)
+      .map((message) => message.text.trim())
+      .filter(Boolean)
+      .slice(-40);
   }
 
   function foodLocalDraft(
@@ -525,42 +536,32 @@ export function ChatApp() {
     label: string;
     summary: string;
   } | null {
-    const priorTexts = messages
-      .filter(
-        (message) => !sourceMessage || message.id !== sourceMessage.id,
-      )
-      .map((message) => message.text.trim())
-      .filter(Boolean)
-      .slice(-40);
-    const listed = ingredientMealQuestion(text);
-    if (listed) {
-      return {
-        draft: withFiammettaIntro(listed),
-        label: "Pranzo o cena con ingredienti",
-        summary: "lista ingredienti",
-      };
-    }
-    const mealAsk = mealChoiceFollowUp(text, priorTexts);
-    if (mealAsk) {
-      return {
-        draft: withFiammettaIntro(mealAsk),
-        label: "Scelta pranzo o cena",
-        summary: "scelta pranzo o cena",
-      };
-    }
-    const afterMeal = mealFollowUpQuestion(
+    const next = provaFiammettaReply(
       text,
-      priorTexts,
+      threadPriorTexts(sourceMessage),
       selected?.displayName,
     );
-    if (afterMeal) {
-      return {
-        draft: withFiammettaIntro(afterMeal),
-        label: "Conferma pasto e ingredienti",
-        summary: "una domanda",
-      };
-    }
-    return null;
+    if (!next) return null;
+    const label =
+      next.note === "domanda pranzo o cena"
+        ? "Pranzo o cena con ingredienti"
+        : next.note === "scelta pasto"
+          ? "Scelta pranzo o cena"
+          : next.note === "conferma pasto"
+            ? "Conferma pasto e ingredienti"
+            : "Piatto nominato";
+    return { draft: next.draft, label, summary: next.note };
+  }
+
+  function foodSequenceQuiet(
+    text: string,
+    sourceMessage?: ChatMessage | null,
+  ): boolean {
+    const priorTexts = threadPriorTexts(sourceMessage);
+    return (
+      foodSequencePhase(priorTexts) !== "start" &&
+      !provaFiammettaReply(text, priorTexts, selected?.displayName)
+    );
   }
 
   function simulateYes() {
@@ -911,6 +912,10 @@ export function ChatApp() {
         message.id,
         send && sendModeRef.current === "automatic",
       );
+      return;
+    }
+    if (foodSequenceQuiet(inbound, message)) {
+      setSelectedMessage(message);
       return;
     }
     if (inbound && (bareMealChoice(inbound) || chosenMeal(inbound))) {

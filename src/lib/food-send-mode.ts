@@ -14,6 +14,7 @@ const FOOD_CUSTOMER_TEMPLATES = new Set([
   "food_ingredients_meal",
   "food_meal_choice",
   "food_meal_followup",
+  "food_named_dish",
 ]);
 
 export function isFoodCustomerDraft(

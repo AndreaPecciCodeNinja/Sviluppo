@@ -4,13 +4,8 @@ import {
   withFiammettaIntro,
 } from "./fiammetta";
 import { extractJsonObject, completeWithReplyProvider } from "./llm";
-import {
-  bareMealChoice,
-  chosenMeal,
-  ingredientMealQuestion,
-  mealChoiceFollowUp,
-  mealFollowUpQuestion,
-} from "./meal-choice";
+import { bareMealChoice, chosenMeal } from "./meal-choice";
+import { foodSequencePhase, provaFiammettaReply } from "./prova-reply";
 import { heuristicIntent } from "./match";
 import { getReplyProvider } from "../reply-provider";
 import {
@@ -144,6 +139,46 @@ export type RouteOptions = {
  * Router reads the inbound text, picks one specialist, and returns a draft.
  * Nothing here sends WhatsApp — the composer only shows the draft.
  */
+const FOOD_SEQUENCE_TEMPLATE: Record<
+  string,
+  { id: string; label: string; rationale: string }
+> = {
+  "domanda pranzo o cena": {
+    id: "food_ingredients_meal",
+    label: "Pranzo o cena con ingredienti",
+    rationale: "Lista ingredienti senza pasto: chiedo pranzo o cena, una volta",
+  },
+  "scelta pasto": {
+    id: "food_meal_choice",
+    label: "Scelta pranzo o cena",
+    rationale: "Sì senza pasto: chiedo pranzo o cena, una volta",
+  },
+  "conferma pasto": {
+    id: "food_meal_followup",
+    label: "Conferma pasto e ingredienti",
+    rationale: "Pasto scelto: una sola conferma, senza ripetere la domanda",
+  },
+  "piatto nominato": {
+    id: "food_named_dish",
+    label: "Piatto nominato",
+    rationale: "Sì alla conferma: nomino il piatto e mi fermo",
+  },
+};
+
+function foodSequenceTemplate(note: string): {
+  id: string;
+  label: string;
+  rationale: string;
+} {
+  return (
+    FOOD_SEQUENCE_TEMPLATE[note] ?? {
+      id: "food_named_dish",
+      label: "Piatto nominato",
+      rationale: note,
+    }
+  );
+}
+
 export async function routeInboundMessage(
   inboundText: string,
   options: RouteOptions = {},
@@ -158,69 +193,35 @@ export async function routeInboundMessage(
     (item) => typeof item === "string" && item.trim().length > 0,
   );
   if (food && isEnvEnabled(food.envFlag)) {
-    const followUp = mealChoiceFollowUp(text, priorTexts);
-    if (followUp) {
-      return {
-        draft: withFiammettaIntro(followUp),
-        autoEligible: true,
-        specialistId: "food",
-        specialistLabel: food.label,
-        routeLabel: fiammettaRouteLabel(food.label),
-        intent: "food_meal",
-        rationale: "Conferma senza pranzo o cena: chiedo quale pasto",
-        intentSummary: "scelta pranzo o cena",
-        slots: {},
-        templateId: "food_meal_choice",
-        templateLabel: "Scelta pranzo o cena",
-        model: "heuristic",
-        provider: getReplyProvider(),
-      };
-    }
-
-    const listed = ingredientMealQuestion(text);
-    if (listed) {
-      return {
-        draft: withFiammettaIntro(listed),
-        autoEligible: true,
-        specialistId: "food",
-        specialistLabel: food.label,
-        routeLabel: fiammettaRouteLabel(food.label),
-        intent: "food_meal",
-        rationale: "Lista ingredienti senza pasto: chiedo pranzo o cena, senza modello",
-        intentSummary: "lista ingredienti",
-        slots: {},
-        templateId: "food_ingredients_meal",
-        templateLabel: "Pranzo o cena con ingredienti",
-        model: "heuristic",
-        provider: getReplyProvider(),
-      };
-    }
-
-    const afterMeal = mealFollowUpQuestion(
+    const sequenced = provaFiammettaReply(
       text,
       priorTexts,
       options.contactDisplayName,
     );
-    if (afterMeal) {
+    if (sequenced) {
+      const template = foodSequenceTemplate(sequenced.note);
       return {
-        draft: withFiammettaIntro(afterMeal),
+        draft: sequenced.draft,
         autoEligible: true,
         specialistId: "food",
         specialistLabel: food.label,
         routeLabel: fiammettaRouteLabel(food.label),
         intent: "food_meal",
-        rationale:
-          "Pasto scelto: una domanda sulla lista più recente, senza piatto-eco",
-        intentSummary: "conferma pasto e ingredienti",
+        rationale: template.rationale,
+        intentSummary: sequenced.note,
         slots: {},
-        templateId: "food_meal_followup",
-        templateLabel: "Conferma pasto e ingredienti",
+        templateId: template.id,
+        templateLabel: template.label,
         model: "heuristic",
         provider: getReplyProvider(),
       };
     }
 
-    if (bareMealChoice(text) || chosenMeal(text)) {
+    if (
+      foodSequencePhase(priorTexts) !== "start" ||
+      bareMealChoice(text) ||
+      chosenMeal(text)
+    ) {
       return {
         draft: "",
         autoEligible: false,
@@ -229,11 +230,13 @@ export async function routeInboundMessage(
         routeLabel: fiammettaRouteLabel(food.label),
         intent: "food_meal",
         rationale:
-          "Il messaggio indica il pasto ma non c'è una lista da confermare",
-        intentSummary: "pasto senza lista",
+          foodSequencePhase(priorTexts) === "done"
+            ? "Piatto già nominato: la sequenza è ferma"
+            : "Domanda già fatta, oppure pasto senza una lista nuova",
+        intentSummary: "sequenza cibo ferma",
         slots: {},
-        templateId: "food_meal_already_chosen",
-        templateLabel: "Pasto già indicato",
+        templateId: "food_sequence_hold",
+        templateLabel: "Sequenza già avanzata",
         model: "heuristic",
         provider: getReplyProvider(),
         skipped: true,
