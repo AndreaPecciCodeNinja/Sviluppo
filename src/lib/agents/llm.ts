@@ -57,14 +57,12 @@ async function callClaude(params: {
   model: string;
   system: string;
   userContent: string;
-  temperature?: number;
   maxTokens?: number;
   schema?: Record<string, unknown>;
 }): Promise<string> {
   const payload: Record<string, unknown> = {
     model: params.model,
     max_tokens: params.maxTokens ?? 512,
-    temperature: params.temperature ?? 0,
     system: params.system,
     messages: [{ role: "user", content: params.userContent }],
   };
@@ -240,7 +238,6 @@ export async function completeWithClaude(params: {
   system: string;
   userText: string;
   schema: Record<string, unknown>;
-  temperature: number;
 }): Promise<{ raw: string; model: string }> {
   const { apiKey } = getClaudeConfig();
   if (!apiKey) {
@@ -252,7 +249,6 @@ export async function completeWithClaude(params: {
     model,
     system: params.system,
     userContent: params.userText,
-    temperature: params.temperature,
     maxTokens: 2048,
     schema: params.schema,
   });

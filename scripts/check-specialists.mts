@@ -575,7 +575,7 @@ function mockChef(contents: string[]) {
     calls.push({
       url: String(url),
       model: body.model ?? "",
-      temperature: body.temperature,
+      temperature: "temperature" in body ? body.temperature : undefined,
       format: body.output_config?.format,
       system: body.system ?? "",
       user: body.messages?.[0]?.content ?? "",
@@ -606,7 +606,7 @@ try {
 assert.equal(calls.length, 2);
 assert.equal(calls[0].url, "https://api.anthropic.com/v1/messages");
 assert.equal(calls[0].model, "claude-opus-5-5");
-assert.equal(calls[0].temperature, 0.4);
+assert.equal(calls[0].temperature, undefined);
 assert.equal(calls[0].hasKey, true);
 assert.equal((calls[0].format as { type?: string }).type, "json_schema");
 assert.ok((calls[0].format as { schema?: { properties?: { menu?: unknown } } }).schema?.properties?.menu);

@@ -250,7 +250,6 @@ async function askChef(
     system: CHEF_PROMPT,
     userText,
     schema: MENU_SCHEMA,
-    temperature: 0.4,
   });
   return completed.raw;
 }
