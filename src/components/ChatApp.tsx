@@ -31,6 +31,7 @@ import {
   chosenMeal,
   ingredientMealQuestion,
   isOwnFoodReply,
+  mealAcceptedDraft,
   mealChoiceFollowUp,
   mealFollowUpQuestion,
 } from "@/lib/agents/meal-choice";
@@ -560,6 +561,21 @@ export function ChatApp() {
       };
     }
     return null;
+  }
+
+  function simulateYes() {
+    const priorTexts = messages
+      .map((message) => message.text.trim())
+      .filter(Boolean)
+      .slice(-40);
+    const next = mealAcceptedDraft(draft, priorTexts, selected?.displayName);
+    if (!next) return;
+    const text = withFiammettaIntro(next);
+    applyComposerDraft(text);
+    setRouteBadge({ label: fiammettaRouteLabel("Cibo"), specialistId: "food" });
+    setSuggestionMeta("Simula sì · bozza nel riquadro · non inviata");
+    setError(null);
+    setSendError(null);
   }
 
   function chooseSendMode(next: FoodSendMode) {
@@ -1215,6 +1231,15 @@ export function ChatApp() {
             setSuggestionMeta(null);
             setRouteBadge(null);
           }}
+          onSimulateYes={
+            mealAcceptedDraft(
+              draft,
+              messages.map((message) => message.text),
+              selected?.displayName,
+            )
+              ? simulateYes
+              : undefined
+          }
           onSuggestReply={handleSuggestReply}
           onSend={async (text) => {
             await handleSend(text);

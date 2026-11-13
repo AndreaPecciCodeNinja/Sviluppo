@@ -164,7 +164,8 @@ export function isOwnFoodReply(text: string): boolean {
     /^sono fiammetta\b/iu.test(text.trim()) ||
     /vuoi che ti prepari il\s+\*?pranzo/iu.test(text) ||
     /preferisci il pranzo o la cena/iu.test(text) ||
-    /per (?:il pranzo|la cena) con /iu.test(text)
+    /per (?:il pranzo|la cena) con /iu.test(text) ||
+    /preparo (?:il pranzo|la cena|una |un )/iu.test(text)
   );
 }
 
@@ -315,6 +316,58 @@ export function mealFollowUpQuestion(
   const name = customerNameFromDisplay(displayName);
   const lead = name ? `${name}, per` : "Per";
   return `${lead} ${mealPhrase} con ${joinItalian(ingredients)} va bene?`;
+}
+
+/**
+ * True when the composer holds the meal confirmation question
+ * ("per la cena con … va bene?"), with or without the Fiammetta intro.
+ */
+export function isMealAcceptanceQuestion(text: string): boolean {
+  return mealFromAcceptanceQuestion(text) !== null;
+}
+
+function mealFromAcceptanceQuestion(text: string): {
+  meal: MealName;
+  listed: string;
+} | null {
+  const stripped = text
+    .replace(/^sono fiammetta\.\s*/iu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const match = stripped.match(
+    /^(?:[\p{L}][\p{L}'’.-]*(?:\s+[\p{L}][\p{L}'’.-]*){0,3},\s*)?per (il pranzo|la cena) con (.+?)\s+va bene\??$/iu,
+  );
+  if (!match) return null;
+  return {
+    meal: /cena/iu.test(match[1]) ? "cena" : "pranzo",
+    listed: match[2],
+  };
+}
+
+/**
+ * One draft after a simulated «sì» to the meal question.
+ * Uses the chosen meal, the latest list, and the WhatsApp name.
+ * Not «ti propongo un piatto con … Userò …».
+ */
+export function mealAcceptedDraft(
+  question: string,
+  priorTexts: readonly string[],
+  displayName?: string | null,
+): string | null {
+  const parsed = mealFromAcceptanceQuestion(question);
+  if (!parsed) return null;
+  const fromThread = ingredientsFromThread(priorTexts, displayName);
+  const fromQuestion = splitItems(parsed.listed);
+  const ingredients = fromThread.length >= 2 ? fromThread : fromQuestion;
+  if (ingredients.length < 2) return null;
+  const mealPhrase = parsed.meal === "cena" ? "la cena" : "il pranzo";
+  const name = customerNameFromDisplay(displayName);
+  const lead = name ? `Perfetto, ${name}.` : "Perfetto.";
+  const dish = heuristicDish(ingredients);
+  const body = dish
+    ? `Per ${mealPhrase} preparo ${dish}.`
+    : `Preparo ${mealPhrase} con ${joinItalian(ingredients)}.`;
+  return `${lead} ${body}`;
 }
 
 export function proposedDishName(ingredients: readonly string[]): string {

@@ -55,8 +55,8 @@ export function Thread({
         </p>
         <p className="hint thread-hint">
           Manuale: la bozza resta nel riquadro e parte solo con Send. Automatica:
-          parte da sola, senza Send. Per provare senza inviare, lascia Manuale
-          e clicca i messaggi già in chat.
+          parte da sola, senza Send. Dopo «va bene?», Simula sì mette la bozza
+          successiva nel riquadro, senza WhatsApp.
         </p>
       </header>
       <div className="thread-messages" role="log" aria-live="polite">

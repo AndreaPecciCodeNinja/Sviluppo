@@ -17,6 +17,7 @@ import {
   ingredientsFromThread,
   isBareAffirmation,
   isOwnFoodReply,
+  mealAcceptedDraft,
   mealChoiceFollowUp,
   mealDishContext,
   mealFollowUpQuestion,
@@ -322,6 +323,52 @@ assert.equal(
   "Per la cena con Pomodori, zucchine, melanzane e aglio va bene?",
 );
 assert.equal(mealFollowUpQuestion("cena", [], "Tommaso"), null);
+const yesPriors = [
+  "Pomodori, zucchine, melanzane, aglio",
+  "Sono Fiammetta. Hai elencato questi ingredienti: Pomodori, zucchine, melanzane, aglio.\nVuoi che ti prepari il pranzo o la cena con questi?",
+];
+const yesQuestion = withFiammettaIntro(followUp || "");
+assert.equal(
+  mealAcceptedDraft(yesQuestion, yesPriors, "Tommaso"),
+  "Perfetto, Tommaso. Per la cena preparo una caponata di verdure.",
+);
+assert.equal(
+  mealAcceptedDraft(
+    "Per la cena con Pomodori, zucchine, melanzane e aglio va bene?",
+    yesPriors,
+    null,
+  ),
+  "Perfetto. Per la cena preparo una caponata di verdure.",
+);
+const lunchYes = mealAcceptedDraft(
+  "Per il pranzo con latte, uova, zucchine e salsiccia va bene?",
+  ["latte, uova, zucchine, salsiccia"],
+  null,
+);
+assert.equal(
+  lunchYes,
+  "Perfetto. Per il pranzo preparo una frittata di zucchine e salsiccia.",
+);
+const plainYes = mealAcceptedDraft(
+  "Per la cena con pollo, riso e zucchine va bene?",
+  ["pollo, riso, zucchine"],
+  "Tommaso",
+);
+assert.equal(
+  plainYes,
+  "Perfetto, Tommaso. Preparo la cena con pollo, riso e zucchine.",
+);
+assert.doesNotMatch(
+  `${yesQuestion} ${mealAcceptedDraft(yesQuestion, yesPriors, "Tommaso")}`,
+  /ti propongo un piatto con|Userò/i,
+);
+assert.equal(mealAcceptedDraft("cena", yesPriors, "Tommaso"), null);
+assert.equal(
+  isOwnFoodReply(
+    "Sono Fiammetta. Perfetto, Tommaso. Per la cena preparo una caponata di verdure.",
+  ),
+  true,
+);
 assert.deepEqual(
   ingredientsFromThread([
     "Pomodori, zucchine, melanzane, aglio",
