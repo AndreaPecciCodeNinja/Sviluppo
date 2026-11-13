@@ -105,7 +105,9 @@ const questionAndList = [
 ];
 assert.equal(chosenMeal("Cena"), "cena");
 assert.equal(chosenMeal("per il pranzo"), "pranzo");
-assert.equal(chosenMeal("cena alle 20"), null);
+assert.equal(chosenMeal("Si, preparami il pranzo."), "pranzo");
+assert.equal(chosenMeal("cena alle 20"), "cena");
+assert.equal(chosenMeal("pranzo o cena"), null);
 const dish = mealDishContext("Cena", questionAndList);
 assert.ok(dish);
 assert.equal(dish?.meal, "cena");
@@ -121,6 +123,18 @@ assert.match(draft, /Per la cena ti propongo una torta al cacao/);
 assert.match(draft, /uova, farina, zucchero e cacao/);
 assert.doesNotMatch(draft, /Vuoi che ti prepari|pranzo o la cena/i);
 assert.equal(mealDishContext("sì", cacao), null);
+const lunchPlate = mealDishContext("Si, preparami il pranzo.", [
+  "carne, pane, pomodori, insalata",
+]);
+assert.equal(lunchPlate?.meal, "pranzo");
+assert.equal(lunchPlate?.dish, "un panino con carne");
+assert.deepEqual(lunchPlate?.ingredients, [
+  "carne",
+  "pane",
+  "pomodori",
+  "insalata",
+]);
+assert.equal(mealDishContext("cena alle 20", []), null);
 assert.equal(fiammettaRouteLabel("Cibo"), "Fiammetta → Cibo");
 assert.equal(fiammettaRouteLabel("Appuntamenti"), "Fiammetta → Appuntamenti");
 assert.equal(
