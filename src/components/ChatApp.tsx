@@ -91,7 +91,7 @@ const AUTO_DRAFT_TEMPLATE_IDS = new Set([
  * Bump when auto-draft behavior changes so an inbound id already handled by
  * an older bundle is drafted again once (same browser session / HMR).
  */
-const AUTO_DRAFT_VERSION = "food-question-2";
+const AUTO_DRAFT_VERSION = "food-chain-1";
 const SUGGEST_TIMEOUT_MS = 25_000;
 const OLLAMA_TIMEOUT_MESSAGE =
   "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
@@ -179,8 +179,12 @@ export function ChatApp() {
   const [composerEpoch, setComposerEpoch] = useState(0);
   /** lastMessageAt already opened, so the inbox dot stays off until a newer message. */
   const [seenInboxAt, setSeenInboxAt] = useState<Record<string, string>>({});
-  /** Manuale keeps the food draft in the composer. Automatica sends it once. */
+  /** Manuale: draft stays until Send. Automatica: send that draft without Send. */
   const [sendMode, setSendMode] = useState<FoodSendMode>("manual");
+  /** False until the saved Manuale/Automatica choice is read. */
+  const [sendModeReady, setSendModeReady] = useState(false);
+  /** Bumps after an automatic send so the next inbound is drafted and sent. */
+  const [chainTick, setChainTick] = useState(0);
   /** Survives inbox polls, which clear the generic load error. */
   const [sendError, setSendError] = useState<string | null>(null);
 
@@ -198,6 +202,16 @@ export function ChatApp() {
   const suggestInFlightRef = useRef(false);
   /** Bumps when a new draft is written, so an older send cannot clear it. */
   const composerWriteRef = useRef(0);
+  /** A newer inbound arrived while a send was in flight. */
+  const chainAfterSendRef = useRef(false);
+  /**
+   * Message the operator selected. Polls must not replace that draft with
+   * the latest inbound until a message that was not already in the chat arrives.
+   */
+  const pinnedSelectionIdRef = useRef<string | null>(null);
+  const inboundIdsAtSelectionRef = useRef<Set<string>>(new Set());
+  /** Inbound ids already in the chat when it was opened. Those stay drafts until selected. */
+  const openedInboundIdsRef = useRef<Set<string> | null>(null);
   const sendModeRef = useRef<FoodSendMode>("manual");
   sendModeRef.current = sendMode;
   /** Inbound ids already auto-sent, or refused (24h) so a reopen does not retry. */
@@ -305,6 +319,8 @@ export function ChatApp() {
       );
     } catch {
       setSendMode("manual");
+    } finally {
+      setSendModeReady(true);
     }
   }, []);
 
@@ -347,6 +363,9 @@ export function ChatApp() {
 
   useEffect(() => {
     autoHandledInboundIdRef.current = null;
+    pinnedSelectionIdRef.current = null;
+    inboundIdsAtSelectionRef.current = new Set();
+    openedInboundIdsRef.current = null;
     suggestInFlightRef.current = false;
     suggestGenerationRef.current += 1;
     if (status?.configured && selectedId) {
@@ -466,6 +485,12 @@ export function ChatApp() {
 
   async function handleSelectMessage(message: ChatMessage) {
     if (message.direction !== "inbound") return;
+    pinnedSelectionIdRef.current = message.id;
+    inboundIdsAtSelectionRef.current = new Set(
+      messages
+        .filter((item) => item.direction === "inbound")
+        .map((item) => item.id),
+    );
     autoHandledInboundIdRef.current = autoHandleKey(message.id);
     suggestGenerationRef.current += 1;
     suggestInFlightRef.current = false;
@@ -473,7 +498,13 @@ export function ChatApp() {
     const localDraft = inbound ? foodLocalDraft(inbound, message) : null;
     if (localDraft) {
       setSelectedMessage(message);
-      showFoodLocalDraft(localDraft, "manual", shortPreview(inbound), message.id);
+      showFoodLocalDraft(
+        localDraft,
+        "manual",
+        shortPreview(inbound),
+        message.id,
+        sendModeRef.current === "automatic",
+      );
       return;
     }
     await prepareInboundSelection(message);
@@ -531,6 +562,26 @@ export function ChatApp() {
     return null;
   }
 
+  function chooseSendMode(next: FoodSendMode) {
+    sendModeRef.current = next;
+    setSendMode(next);
+    try {
+      window.localStorage.setItem(FOOD_SEND_MODE_KEY, next);
+    } catch {
+      /* the choice still applies until reload */
+    }
+    if (next !== "automatic") return;
+    const message =
+      (selectedMessage && selectedMessage.direction === "inbound"
+        ? selectedMessage
+        : null) ?? findLatestInbound(messages);
+    if (!message) return;
+    const inbound = inboundComposerText(message);
+    const local = inbound ? foodLocalDraft(inbound, message) : null;
+    if (!local || local.draft.trim() !== draft.trim()) return;
+    void maybeAutoSendFoodDraft(message.id, local.draft);
+  }
+
   function rememberSentText(text: string) {
     const key = normalizeOutboundText(text);
     if (!key) return;
@@ -538,7 +589,10 @@ export function ChatApp() {
     const stored = [...sentTextsRef.current].slice(-100);
     sentTextsRef.current = new Set(stored);
     try {
-      window.localStorage.setItem(FOOD_AUTO_SENT_TEXTS_KEY, JSON.stringify(stored));
+      window.localStorage.setItem(
+        FOOD_AUTO_SENT_TEXTS_KEY,
+        JSON.stringify(stored),
+      );
     } catch {
       /* the in-memory set still blocks a loop in this page load */
     }
@@ -571,26 +625,9 @@ export function ChatApp() {
     }
   }
 
-  function chooseSendMode(next: FoodSendMode) {
-    sendModeRef.current = next;
-    setSendMode(next);
-    try {
-      window.localStorage.setItem(FOOD_SEND_MODE_KEY, next);
-    } catch {
-      /* the choice still applies until reload */
-    }
-    if (next !== "automatic") return;
-    const latest = findLatestInbound(messages);
-    if (!latest) return;
-    const inbound = inboundComposerText(latest);
-    const local = inbound ? foodLocalDraft(inbound, latest) : null;
-    if (!local || local.draft.trim() !== draft.trim()) return;
-    void maybeAutoSendFoodDraft(latest.id, local.draft);
-  }
-
   /**
-   * Sends the exact food draft just built for this inbound. Claims the id
-   * before the request so a reopen or a poll cannot send it again.
+   * Automatica only. Manuale never reaches a WhatsApp send from here:
+   * shouldAutoSendFoodDraft is false unless the mode is automatic.
    */
   async function maybeAutoSendFoodDraft(messageId: string | null, text: string) {
     const id = messageId?.trim() || "";
@@ -628,6 +665,7 @@ export function ChatApp() {
     source: "auto" | "manual",
     preview: string,
     messageId: string | null,
+    send: boolean,
   ) {
     const foodBadge = fiammettaRouteLabel("Cibo");
     const tried = messageId ? triedSendsRef.current[messageId] : undefined;
@@ -648,7 +686,9 @@ export function ChatApp() {
     );
     setError(null);
     setSuggesting(false);
-    void maybeAutoSendFoodDraft(messageId, localDraft.draft);
+    if (send && sendModeRef.current === "automatic") {
+      void maybeAutoSendFoodDraft(messageId, localDraft.draft);
+    }
   }
 
   async function runSuggestReply(params: {
@@ -656,6 +696,7 @@ export function ChatApp() {
     source: "auto" | "manual";
     sourceMessage?: ChatMessage | null;
     generation: number;
+    send?: boolean;
   }) {
     const text = params.text.trim();
     if (!text || transcribing) return;
@@ -672,6 +713,7 @@ export function ChatApp() {
         params.source,
         preview,
         params.sourceMessage?.id ?? null,
+        params.send === true && sendModeRef.current === "automatic",
       );
       return;
     }
@@ -799,8 +841,9 @@ export function ChatApp() {
           .join(" · "),
       );
       if (
-        isFoodCustomerDraft(templateId) ||
-        suggestion.specialistId === "food"
+        params.send === true &&
+        sendModeRef.current === "automatic" &&
+        (isFoodCustomerDraft(templateId) || suggestion.specialistId === "food")
       ) {
         void maybeAutoSendFoodDraft(
           params.sourceMessage?.id ?? null,
@@ -833,7 +876,7 @@ export function ChatApp() {
     });
   }
 
-  async function runAutoDraft(message: ChatMessage) {
+  async function runAutoDraft(message: ChatMessage, send: boolean) {
     if (message.direction !== "inbound") return;
     const handleKey = autoHandleKey(message.id);
     if (autoHandledInboundIdRef.current === handleKey) return;
@@ -850,6 +893,7 @@ export function ChatApp() {
         "auto",
         shortPreview(inbound),
         message.id,
+        send && sendModeRef.current === "automatic",
       );
       return;
     }
@@ -867,12 +911,13 @@ export function ChatApp() {
       source: "auto",
       sourceMessage: message,
       generation,
+      send: send && sendModeRef.current === "automatic",
     });
   }
 
   // Auto-select latest inbound + draft when conversation opens or a new inbound arrives.
   useEffect(() => {
-    if (!selectedId || messages.length === 0) return;
+    if (!sendModeReady || !selectedId || messages.length === 0) return;
     const versionChanged = autoDraftVersionRef.current !== AUTO_DRAFT_VERSION;
     if (versionChanged) {
       autoDraftVersionRef.current = AUTO_DRAFT_VERSION;
@@ -881,17 +926,40 @@ export function ChatApp() {
       suggestInFlightRef.current = false;
       setSuggesting(false);
     }
-    if (!versionChanged && (suggesting || transcribing || sending)) return;
-    if (transcribing || sending) return;
+    if (!versionChanged && (suggesting || transcribing || sending)) {
+      if (sending) chainAfterSendRef.current = true;
+      return;
+    }
+    if (transcribing || sending) {
+      if (sending) chainAfterSendRef.current = true;
+      return;
+    }
 
     const latest = findLatestInbound(messages);
     if (!latest) return;
+    if (!openedInboundIdsRef.current) {
+      openedInboundIdsRef.current = new Set(
+        messages
+          .filter((message) => message.direction === "inbound")
+          .map((message) => message.id),
+      );
+    }
+    const pinnedId = pinnedSelectionIdRef.current;
+    if (pinnedId && inboundIdsAtSelectionRef.current.has(latest.id)) return;
+    if (pinnedId && latest.id !== pinnedId) {
+      pinnedSelectionIdRef.current = null;
+    }
     if (autoHandledInboundIdRef.current === autoHandleKey(latest.id)) return;
 
-    void runAutoDraft(latest);
+    const arrivedAfterOpen = !openedInboundIdsRef.current.has(latest.id);
+    if (arrivedAfterOpen) openedInboundIdsRef.current.add(latest.id);
+    void runAutoDraft(
+      latest,
+      arrivedAfterOpen && sendModeRef.current === "automatic",
+    );
     // Intentionally omit runAutoDraft from deps — stable closure via refs/state above.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- poll-driven; guard via autoHandledInboundIdRef
-  }, [messages, selectedId, composerEpoch, suggesting, transcribing, sending]);
+  }, [messages, selectedId, composerEpoch, suggesting, transcribing, sending, sendModeReady, chainTick]);
 
   async function handleSend(text: string): Promise<AutoSendOutcome> {
     if (!selectedId) return "error";
@@ -955,6 +1023,15 @@ export function ChatApp() {
       return "error";
     } finally {
       setSending(false);
+      if (
+        chainAfterSendRef.current &&
+        sendModeRef.current === "automatic"
+      ) {
+        chainAfterSendRef.current = false;
+        setChainTick((tick) => tick + 1);
+      } else {
+        chainAfterSendRef.current = false;
+      }
     }
   }
 
