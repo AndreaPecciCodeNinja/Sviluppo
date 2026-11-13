@@ -17,6 +17,7 @@ import {
   ingredientsFromThread,
   isBareAffirmation,
   isOwnFoodReply,
+  spokenCustomerName,
   mealAcceptedDraft,
   mealChoiceFollowUp,
   mealDishContext,
@@ -205,6 +206,9 @@ assert.match(currentDraft, /panino con carne/);
 assert.match(currentDraft, /Carne, pane, pomodori e insalata/);
 assert.doesNotMatch(currentDraft, /torta|cacao|Andrea|Ciao|Tommaso/i);
 assert.equal(customerNameFromDisplay("Tommaso Rossi"), "Tommaso Rossi");
+assert.equal(spokenCustomerName("Tommaso Pelucchini"), "Tommaso");
+assert.equal(spokenCustomerName("Tommaso"), "Tommaso");
+assert.equal(spokenCustomerName("Unknown"), null);
 assert.equal(customerNameFromDisplay("Unknown"), null);
 assert.equal(customerNameFromDisplay("+393337802795"), null);
 assert.equal(customerNameFromDisplay(""), null);
@@ -356,7 +360,20 @@ const plainYes = mealAcceptedDraft(
 );
 assert.equal(
   plainYes,
-  "Perfetto, Tommaso. Preparo la cena con pollo, riso e zucchine.",
+  "Perfetto, Tommaso. Per la cena preparo un risotto di pollo e zucchine.",
+);
+const raguYes = mealAcceptedDraft(
+  "Tommaso Pelucchini, per la cena con Pasta, formaggio, ragù di carne e peperoncino va bene?",
+  ["Pasta, formaggio, ragù di carne, peperoncino"],
+  "Tommaso Pelucchini",
+);
+assert.equal(
+  raguYes,
+  "Perfetto, Tommaso. Per la cena preparo una pasta al ragù piccante.",
+);
+assert.doesNotMatch(
+  raguYes || "",
+  /Preparo la cena con|Pelucchini|formaggio|peperoncino|ti propongo un piatto con|Userò/i,
 );
 assert.doesNotMatch(
   `${yesQuestion} ${mealAcceptedDraft(yesQuestion, yesPriors, "Tommaso")}`,

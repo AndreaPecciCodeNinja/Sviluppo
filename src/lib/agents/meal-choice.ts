@@ -183,6 +183,19 @@ export function customerNameFromDisplay(
   return name;
 }
 
+/**
+ * First name when the WhatsApp display is several words.
+ * "Tommaso Pelucchini" reads as Tommaso; a single word stays as it is.
+ */
+export function spokenCustomerName(
+  displayName: string | null | undefined,
+): string | null {
+  const full = customerNameFromDisplay(displayName);
+  if (!full) return null;
+  const parts = full.split(" ").filter(Boolean);
+  return parts.length >= 2 ? parts[0] : full;
+}
+
 function cleanIngredientPhrase(part: string): string {
   let text = part.replace(/\s+/g, " ").trim();
   text = text.replace(
@@ -295,6 +308,17 @@ export function heuristicDish(ingredients: readonly string[]): string | null {
   ) {
     return "una torta al cacao";
   }
+  if (
+    /pasta/iu.test(blob) &&
+    /formagg/iu.test(blob) &&
+    /rag[uù]/iu.test(blob) &&
+    /peperonc/iu.test(blob)
+  ) {
+    return "una pasta al ragù piccante";
+  }
+  if (/pollo/iu.test(blob) && /riso/iu.test(blob) && /zucchin/iu.test(blob)) {
+    return "un risotto di pollo e zucchine";
+  }
   return null;
 }
 
@@ -345,9 +369,9 @@ function mealFromAcceptanceQuestion(text: string): {
 }
 
 /**
- * One draft after a simulated «sì» to the meal question.
- * Uses the chosen meal, the latest list, and the WhatsApp name.
- * Not «ti propongo un piatto con … Userò …».
+ * One draft after a simulated «sì».
+ * Names a dish from the latest list. Does not repeat that list.
+ * A long WhatsApp display name is shortened to the first name.
  */
 export function mealAcceptedDraft(
   question: string,
@@ -361,13 +385,11 @@ export function mealAcceptedDraft(
   const ingredients = fromThread.length >= 2 ? fromThread : fromQuestion;
   if (ingredients.length < 2) return null;
   const mealPhrase = parsed.meal === "cena" ? "la cena" : "il pranzo";
-  const name = customerNameFromDisplay(displayName);
+  const name = spokenCustomerName(displayName);
   const lead = name ? `Perfetto, ${name}.` : "Perfetto.";
   const dish = heuristicDish(ingredients);
-  const body = dish
-    ? `Per ${mealPhrase} preparo ${dish}.`
-    : `Preparo ${mealPhrase} con ${joinItalian(ingredients)}.`;
-  return `${lead} ${body}`;
+  if (!dish) return null;
+  return `${lead} Per ${mealPhrase} preparo ${dish}.`;
 }
 
 export function proposedDishName(ingredients: readonly string[]): string {
