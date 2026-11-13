@@ -5,6 +5,11 @@ import {
   normalizeTime,
 } from "../src/lib/agents/appointment-draft.ts";
 import {
+  isBareAffirmation,
+  mealChoiceFollowUp,
+  MEAL_CHOICE_DRAFT,
+} from "../src/lib/agents/meal-choice.ts";
+import {
   heuristicIntent,
   matchAppointment,
   matchFood,
@@ -70,5 +75,19 @@ assert.match(withPurpose.draft, /per consulenza/);
 const ask = buildAppointmentDraft({ date: "", time: "15:00", purpose: "" });
 assert.equal(ask.kind, "ask");
 assert.match(ask.draft, /giorno/);
+
+const ingredients = ["pomodori, mozzarella, basilico, olio"];
+const question = [
+  "Hai elencato questi ingredienti: pomodori, mozzarella.\nVuoi che ti prepari il *pranzo* o la *cena* con questi?",
+];
+assert.equal(isBareAffirmation("Sì!"), true);
+assert.equal(isBareAffirmation("va bene"), true);
+assert.equal(isBareAffirmation("ok pranzo"), false);
+assert.equal(mealChoiceFollowUp("sì", ingredients), MEAL_CHOICE_DRAFT);
+assert.equal(mealChoiceFollowUp("Ok.", question), MEAL_CHOICE_DRAFT);
+assert.equal(mealChoiceFollowUp("va bene", ["ciao"]), null);
+assert.equal(mealChoiceFollowUp("pranzo", ingredients), null);
+assert.equal(mealChoiceFollowUp("sì, cena", question), null);
+assert.equal(mealChoiceFollowUp("grazie", ingredients), null);
 
 console.log("specialist heuristic checks ok");

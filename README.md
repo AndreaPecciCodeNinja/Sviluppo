@@ -86,6 +86,8 @@ Requires `OPENAI_API_KEY` in `.env.local` for step 4. Without it, text selection
 Example food flow: inbound “pomodori, mozzarella, basilico, olio” → template `food_ingredients_meal` →  
 “Hai elencato questi ingredienti: pomodori, mozzarella, basilico, olio. Vuoi che ti prepari il pranzo o la cena…?”
 
+If the latest inbound is only a yes (`sì`, `ok`, `va bene`, …) and it does **not** say pranzo or cena, and the thread already has that meal question or an ingredient list, the composer gets one draft: “Perfetto. Preferisci il pranzo o la cena?”. Once per message id, still not sent. An inbound that already says pranzo or cena stays on the existing food path.
+
 Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `when_to_use`, `body` with `{{slots}}`).
 
 ### Router and specialists
@@ -94,7 +96,7 @@ Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `wh
 
 | Specialist | Intent | Auto-draft |
 |------------|--------|------------|
-| `food` | ingredient list / pranzo\|cena | yes, when template `food_ingredients_meal` is chosen (existing flow) |
+| `food` | ingredient list / pranzo\|cena, or a bare yes after that context | yes for `food_ingredients_meal`, and for the pranzo/cena question after sì/ok/va bene |
 | `appointments` | appointment, time, “ci vediamo” | yes — confirmation if day and time are present, otherwise a question |
 | `generic` | anything else | no — short ack only if you press **Suggerisci risposta** |
 

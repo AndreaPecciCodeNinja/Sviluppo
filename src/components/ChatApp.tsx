@@ -10,6 +10,7 @@ import {
   type OllamaHealthView,
 } from "./OllamaStatusBadge";
 import { Thread } from "./Thread";
+import { mealChoiceFollowUp } from "@/lib/agents/meal-choice";
 import type {
   BirdConfigStatus,
   ChatMessage,
@@ -23,7 +24,10 @@ const INTERVAL =
 const OLLAMA_HEALTH_MS = 15000;
 
 /** Templates safe to apply without a manual Suggerisci click. */
-const AUTO_DRAFT_TEMPLATE_IDS = new Set(["food_ingredients_meal"]);
+const AUTO_DRAFT_TEMPLATE_IDS = new Set([
+  "food_ingredients_meal",
+  "food_meal_choice",
+]);
 
 function findLatestInbound(messages: ChatMessage[]): ChatMessage | null {
   let latest: ChatMessage | null = null;
@@ -329,12 +333,23 @@ export function ChatApp() {
     setSuggesting(true);
     setSuggestSource(params.source);
     setError(null);
+    const priorTexts = messages
+      .filter(
+        (message) =>
+          !params.sourceMessage || message.id !== params.sourceMessage.id,
+      )
+      .map((message) => message.text.trim())
+      .filter(Boolean)
+      .slice(-40);
+    const asksMealChoice = Boolean(mealChoiceFollowUp(text, priorTexts));
     try {
-      const health = await loadOllamaHealth();
-      if (params.generation !== suggestGenerationRef.current) return;
-      if (health?.provider === "ollama" && !health.ok) {
-        setError(health.message);
-        return;
+      if (!asksMealChoice) {
+        const health = await loadOllamaHealth();
+        if (params.generation !== suggestGenerationRef.current) return;
+        if (health?.provider === "ollama" && !health.ok) {
+          setError(health.message);
+          return;
+        }
       }
       const res = await fetch("/api/messages/suggest-reply", {
         method: "POST",
@@ -343,6 +358,7 @@ export function ChatApp() {
           text,
           contactKey: memoryContactKey,
           conversationId: selectedId,
+          priorTexts,
         }),
       });
       const data = (await res.json()) as {

@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
     text?: string;
     contactKey?: string;
     conversationId?: string;
+    priorTexts?: unknown;
   };
   try {
     payload = (await request.json()) as typeof payload;
@@ -67,10 +68,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const priorTexts = Array.isArray(payload.priorTexts)
+    ? payload.priorTexts
+        .filter((item): item is string => typeof item === "string")
+        .slice(-40)
+    : [];
+
   try {
     const suggestion = await routeInboundMessage(text, {
       contactKey: payload.contactKey,
       conversationId: payload.conversationId,
+      priorTexts,
     });
     return NextResponse.json({ suggestion });
   } catch (err) {
