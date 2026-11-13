@@ -25,6 +25,11 @@ import {
   matchFood,
 } from "../src/lib/agents/match.ts";
 import type { RouterIntent } from "../src/lib/agents/types.ts";
+import {
+  isWindowClosedSendError,
+  parseFoodSendMode,
+  shouldAutoSendFoodDraft,
+} from "../src/lib/food-send-mode.ts";
 
 const enabled = new Set<RouterIntent>(["appointment", "food_meal", "generic"]);
 
@@ -209,5 +214,42 @@ assert.equal(
   withFiammettaIntro("Sono Fiammetta. Già presentato."),
   "Sono Fiammetta. Già presentato.",
 );
+
+assert.equal(parseFoodSendMode(null), "manual");
+assert.equal(parseFoodSendMode("automatic"), "automatic");
+assert.equal(parseFoodSendMode("other"), "manual");
+assert.equal(
+  shouldAutoSendFoodDraft({ mode: "manual", messageId: "m1", tried: {} }),
+  false,
+);
+assert.equal(
+  shouldAutoSendFoodDraft({ mode: "automatic", messageId: "m1", tried: {} }),
+  true,
+);
+assert.equal(
+  shouldAutoSendFoodDraft({
+    mode: "automatic",
+    messageId: "m1",
+    tried: { m1: "sent" },
+  }),
+  false,
+);
+assert.equal(
+  shouldAutoSendFoodDraft({
+    mode: "automatic",
+    messageId: "m1",
+    tried: { m1: "window" },
+  }),
+  false,
+);
+assert.equal(
+  isWindowClosedSendError({ code: "E15044", message: "no" }),
+  true,
+);
+assert.equal(
+  isWindowClosedSendError({ message: "customer service window is closed" }),
+  true,
+);
+assert.equal(isWindowClosedSendError({ message: "network down" }), false);
 
 console.log("specialist heuristic checks ok");

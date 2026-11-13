@@ -270,8 +270,42 @@ button.bubble {
 }
 
 .thread-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   padding: 0.55rem 1.25rem 0;
   min-height: 0;
+}
+
+.send-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.send-mode-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-right: 0.15rem;
+}
+
+.send-mode-option {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.18rem 0.7rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.send-mode-option.is-active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .memory-panel {
