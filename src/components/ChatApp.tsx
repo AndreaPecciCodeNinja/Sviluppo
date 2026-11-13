@@ -10,7 +10,11 @@ import {
   type OllamaHealthView,
 } from "./OllamaStatusBadge";
 import { Thread } from "./Thread";
-import { mealChoiceFollowUp, mealDishContext } from "@/lib/agents/meal-choice";
+import {
+  buildDishDraft,
+  mealChoiceFollowUp,
+  mealDishContext,
+} from "@/lib/agents/meal-choice";
 import type {
   BirdConfigStatus,
   ChatMessage,
@@ -29,6 +33,28 @@ const AUTO_DRAFT_TEMPLATE_IDS = new Set([
   "food_meal_choice",
   "food_dish_proposal",
 ]);
+/**
+ * Bump when auto-draft behavior changes so an inbound id already handled by
+ * an older bundle is drafted again once (same browser session / HMR).
+ */
+const AUTO_DRAFT_VERSION = "food-dish-2";
+const SUGGEST_TIMEOUT_MS = 25_000;
+const OLLAMA_TIMEOUT_MESSAGE =
+  "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
+
+function autoHandleKey(messageId: string): string {
+  return `${AUTO_DRAFT_VERSION}:${messageId}`;
+}
+
+function isTimeoutError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const name = err.name.toLowerCase();
+  return (
+    name === "timeouterror" ||
+    name === "aborterror" ||
+    /timeout|timed out|aborted/i.test(err.message)
+  );
+}
 
 function findLatestInbound(messages: ChatMessage[]): ChatMessage | null {
   let latest: ChatMessage | null = null;
@@ -89,10 +115,13 @@ export function ChatApp() {
   );
   const [ollamaChecking, setOllamaChecking] = useState(false);
 
-  /** Inbound message ids already auto-drafted (or skipped) — avoid poll loops. */
+  /** `${version}:${messageId}` already auto-drafted — avoid poll loops. */
   const autoHandledInboundIdRef = useRef<string | null>(null);
+  /** Which auto-draft rules already reset the handled ids in this session. */
+  const autoDraftVersionRef = useRef<string | null>(null);
   /** Bumped on conversation change / clear so stale async work is ignored. */
   const suggestGenerationRef = useRef(0);
+  const suggestInFlightRef = useRef(false);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId),
@@ -116,12 +145,15 @@ export function ChatApp() {
   const loadOllamaHealth = useCallback(async () => {
     setOllamaChecking(true);
     try {
-      const res = await fetch("/api/ollama/health", { cache: "no-store" });
+      const res = await fetch("/api/ollama/health", {
+        cache: "no-store",
+        signal: AbortSignal.timeout(8000),
+      });
       const data = (await res.json()) as OllamaHealthView;
       setOllamaHealth(data);
       return data;
-    } catch {
-      setOllamaHealth({
+    } catch (err) {
+      const down: OllamaHealthView = {
         provider: "ollama",
         active: true,
         reachable: false,
@@ -129,10 +161,12 @@ export function ChatApp() {
         baseUrl: "?",
         modelPresent: false,
         ok: false,
-        message:
-          "Impossibile controllare Ollama (health API) — riprova tra poco",
-      });
-      return null;
+        message: isTimeoutError(err)
+          ? OLLAMA_TIMEOUT_MESSAGE
+          : "Impossibile controllare Ollama (health API) — riprova tra poco",
+      };
+      setOllamaHealth(down);
+      return down;
     } finally {
       setOllamaChecking(false);
     }
@@ -199,6 +233,7 @@ export function ChatApp() {
 
   useEffect(() => {
     autoHandledInboundIdRef.current = null;
+    suggestInFlightRef.current = false;
     suggestGenerationRef.current += 1;
     if (status?.configured && selectedId) {
       void loadMessages(selectedId);
@@ -317,8 +352,9 @@ export function ChatApp() {
   async function handleSelectMessage(message: ChatMessage) {
     if (message.direction !== "inbound") return;
     // Manual select is an override: do not auto-re-run for this id.
-    autoHandledInboundIdRef.current = message.id;
+    autoHandledInboundIdRef.current = autoHandleKey(message.id);
     suggestGenerationRef.current += 1;
+    suggestInFlightRef.current = false;
     await prepareInboundSelection(message);
   }
 
@@ -329,11 +365,9 @@ export function ChatApp() {
     generation: number;
   }) {
     const text = params.text.trim();
-    if (!text || suggesting || transcribing) return;
+    if (!text || transcribing) return;
+    if (suggestInFlightRef.current) return;
 
-    setSuggesting(true);
-    setSuggestSource(params.source);
-    setError(null);
     const priorTexts = messages
       .filter(
         (message) =>
@@ -342,16 +376,56 @@ export function ChatApp() {
       .map((message) => message.text.trim())
       .filter(Boolean)
       .slice(-40);
-    const asksMealChoice = Boolean(mealChoiceFollowUp(text, priorTexts));
-    const knownDish = Boolean(mealDishContext(text, priorTexts)?.dish);
-    try {
-      if (!asksMealChoice && !knownDish) {
-        const health = await loadOllamaHealth();
-        if (params.generation !== suggestGenerationRef.current) return;
-        if (health?.provider === "ollama" && !health.ok) {
-          setError(health.message);
-          return;
+    const mealAsk = mealChoiceFollowUp(text, priorTexts);
+    const dishCtx = mealDishContext(text, priorTexts);
+    const localDraft = mealAsk
+      ? {
+          draft: mealAsk,
+          label: "Scelta pranzo o cena",
+          summary: "scelta pranzo o cena",
         }
+      : dishCtx?.dish
+        ? {
+            draft: buildDishDraft(dishCtx.meal, dishCtx.dish, dishCtx.ingredients),
+            label: "Proposta piatto",
+            summary: `${dishCtx.meal} · ${dishCtx.dish}`,
+          }
+        : null;
+    if (localDraft) {
+      const preview = shortPreview(
+        params.sourceMessage
+          ? inboundComposerText(params.sourceMessage) || text
+          : text,
+      );
+      setDraft(localDraft.draft);
+      setRouteBadge({ label: "Router → Cibo", specialistId: "food" });
+      setSuggestionMeta(
+        [
+          params.source === "auto" ? "Bozza automatica" : null,
+          "Router → Cibo",
+          preview ? `msg “${preview}”` : null,
+          localDraft.label,
+          localDraft.summary,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      );
+      setError(null);
+      setSuggesting(false);
+      setSuggestSource(null);
+      return;
+    }
+
+    suggestInFlightRef.current = true;
+    setSuggesting(true);
+    setSuggestSource(params.source);
+    setError(null);
+    try {
+      const health = await loadOllamaHealth();
+      if (params.generation !== suggestGenerationRef.current) return;
+      if (!health || (health.provider === "ollama" && !health.ok)) {
+        setError(health?.message || OLLAMA_TIMEOUT_MESSAGE);
+        return;
       }
       const res = await fetch("/api/messages/suggest-reply", {
         method: "POST",
@@ -362,6 +436,7 @@ export function ChatApp() {
           conversationId: selectedId,
           priorTexts,
         }),
+        signal: AbortSignal.timeout(SUGGEST_TIMEOUT_MS),
       });
       const data = (await res.json()) as {
         suggestion?: {
@@ -453,10 +528,15 @@ export function ChatApp() {
     } catch (err) {
       if (params.generation !== suggestGenerationRef.current) return;
       setError(
-        err instanceof Error ? err.message : "Suggest reply failed",
+        isTimeoutError(err)
+          ? OLLAMA_TIMEOUT_MESSAGE
+          : err instanceof Error
+            ? err.message
+            : "Suggest reply failed",
       );
     } finally {
       if (params.generation === suggestGenerationRef.current) {
+        suggestInFlightRef.current = false;
         setSuggesting(false);
         setSuggestSource(null);
       }
@@ -478,8 +558,9 @@ export function ChatApp() {
 
   async function runAutoDraft(message: ChatMessage) {
     if (message.direction !== "inbound") return;
-    if (autoHandledInboundIdRef.current === message.id) return;
-    autoHandledInboundIdRef.current = message.id;
+    const handleKey = autoHandleKey(message.id);
+    if (autoHandledInboundIdRef.current === handleKey) return;
+    autoHandledInboundIdRef.current = handleKey;
     const generation = ++suggestGenerationRef.current;
 
     const text = await prepareInboundSelection(message);
@@ -497,11 +578,21 @@ export function ChatApp() {
   // Auto-select latest inbound + draft when conversation opens or a new inbound arrives.
   useEffect(() => {
     if (!selectedId || messages.length === 0) return;
-    if (suggesting || transcribing || sending) return;
+    const versionChanged = autoDraftVersionRef.current !== AUTO_DRAFT_VERSION;
+    if (versionChanged) {
+      autoDraftVersionRef.current = AUTO_DRAFT_VERSION;
+      autoHandledInboundIdRef.current = null;
+      suggestGenerationRef.current += 1;
+      suggestInFlightRef.current = false;
+      setSuggesting(false);
+      setSuggestSource(null);
+    }
+    if (!versionChanged && (suggesting || transcribing || sending)) return;
+    if (transcribing || sending) return;
 
     const latest = findLatestInbound(messages);
     if (!latest) return;
-    if (autoHandledInboundIdRef.current === latest.id) return;
+    if (autoHandledInboundIdRef.current === autoHandleKey(latest.id)) return;
 
     void runAutoDraft(latest);
     // Intentionally omit runAutoDraft from deps — stable closure via refs/state above.
@@ -662,6 +753,7 @@ export function ChatApp() {
           specialistId={routeBadge?.specialistId ?? null}
           onClearSelection={() => {
             suggestGenerationRef.current += 1;
+            suggestInFlightRef.current = false;
             // Keep autoHandled id so poll does not immediately re-draft.
             setSelectedMessage(null);
             setDraft("");
