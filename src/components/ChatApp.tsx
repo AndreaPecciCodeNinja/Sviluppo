@@ -32,6 +32,7 @@ import {
   ingredientMealQuestion,
   isOwnFoodReply,
   mealChoiceFollowUp,
+  mealFollowUpQuestion,
 } from "@/lib/agents/meal-choice";
 import type {
   BirdConfigStatus,
@@ -84,12 +85,13 @@ const OLLAMA_HEALTH_MS = 15000;
 const AUTO_DRAFT_TEMPLATE_IDS = new Set([
   "food_ingredients_meal",
   "food_meal_choice",
+  "food_meal_followup",
 ]);
 /**
  * Bump when auto-draft behavior changes so an inbound id already handled by
  * an older bundle is drafted again once (same browser session / HMR).
  */
-const AUTO_DRAFT_VERSION = "food-question-1";
+const AUTO_DRAFT_VERSION = "food-question-2";
 const SUGGEST_TIMEOUT_MS = 25_000;
 const OLLAMA_TIMEOUT_MESSAGE =
   "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
@@ -512,6 +514,18 @@ export function ChatApp() {
         draft: withFiammettaIntro(mealAsk),
         label: "Scelta pranzo o cena",
         summary: "scelta pranzo o cena",
+      };
+    }
+    const afterMeal = mealFollowUpQuestion(
+      text,
+      priorTexts,
+      selected?.displayName,
+    );
+    if (afterMeal) {
+      return {
+        draft: withFiammettaIntro(afterMeal),
+        label: "Conferma pasto e ingredienti",
+        summary: "una domanda",
       };
     }
     return null;

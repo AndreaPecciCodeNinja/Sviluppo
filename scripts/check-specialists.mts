@@ -19,6 +19,7 @@ import {
   isOwnFoodReply,
   mealChoiceFollowUp,
   mealDishContext,
+  mealFollowUpQuestion,
   MEAL_CHOICE_DRAFT,
 } from "../src/lib/agents/meal-choice.ts";
 import {
@@ -303,5 +304,30 @@ assert.match(vegDraft, /filo d'olio/);
 assert.doesNotMatch(vegDraft, /un piatto con|Userò Pomodori/i);
 assert.equal(isOwnFoodReply(withFiammettaIntro(vegDraft)), true);
 assert.equal(isOwnFoodReply("Cena"), false);
+const followUp = mealFollowUpQuestion(
+  "cena",
+  [
+    "Pomodori, zucchine, melanzane, aglio",
+    "Sono Fiammetta. Hai elencato questi ingredienti: Pomodori, zucchine, melanzane, aglio.\nVuoi che ti prepari il pranzo o la cena con questi?",
+  ],
+  "Tommaso",
+);
+assert.equal(
+  followUp,
+  "Tommaso, per la cena con Pomodori, zucchine, melanzane e aglio va bene?",
+);
+assert.doesNotMatch(followUp || "", /ti propongo|un piatto con|Userò/i);
+assert.equal(
+  mealFollowUpQuestion("cena", ["Pomodori, zucchine, melanzane, aglio"], null),
+  "Per la cena con Pomodori, zucchine, melanzane e aglio va bene?",
+);
+assert.equal(mealFollowUpQuestion("cena", [], "Tommaso"), null);
+assert.deepEqual(
+  ingredientsFromThread([
+    "Pomodori, zucchine, melanzane, aglio",
+    "Tommaso, per la cena con Pomodori, zucchine, melanzane e aglio va bene?",
+  ]),
+  ["Pomodori", "zucchine", "melanzane", "aglio"],
+);
 
 console.log("specialist heuristic checks ok");

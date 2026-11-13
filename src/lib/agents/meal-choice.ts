@@ -163,7 +163,8 @@ export function isOwnFoodReply(text: string): boolean {
     /ti propongo/iu.test(text) ||
     /^sono fiammetta\b/iu.test(text.trim()) ||
     /vuoi che ti prepari il\s+\*?pranzo/iu.test(text) ||
-    /preferisci il pranzo o la cena/iu.test(text)
+    /preferisci il pranzo o la cena/iu.test(text) ||
+    /per (?:il pranzo|la cena) con /iu.test(text)
   );
 }
 
@@ -294,6 +295,26 @@ export function heuristicDish(ingredients: readonly string[]): string | null {
     return "una torta al cacao";
   }
   return null;
+}
+
+/**
+ * One follow-up after the contact picks pranzo or cena.
+ * Uses only the latest ingredient list and the WhatsApp display name.
+ * Not a plate, and the list is not repeated.
+ */
+export function mealFollowUpQuestion(
+  inbound: string,
+  priorTexts: readonly string[],
+  displayName?: string | null,
+): string | null {
+  const meal = bareMealChoice(inbound) ?? chosenMeal(inbound);
+  if (!meal) return null;
+  const ingredients = ingredientsFromThread(priorTexts, displayName);
+  if (ingredients.length < 2) return null;
+  const mealPhrase = meal === "cena" ? "la cena" : "il pranzo";
+  const name = customerNameFromDisplay(displayName);
+  const lead = name ? `${name}, per` : "Per";
+  return `${lead} ${mealPhrase} con ${joinItalian(ingredients)} va bene?`;
 }
 
 export function proposedDishName(ingredients: readonly string[]): string {
