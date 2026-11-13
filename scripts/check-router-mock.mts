@@ -200,6 +200,49 @@ assert.equal(
 assert.doesNotMatch(otherDish.draft, /ti propongo|un piatto con|Userò/i);
 assert.equal(providerCalls, callsBeforeLunch);
 
+const carbonaraYes = await routeInboundMessage("si", {
+  contactDisplayName: "Tommaso Pelucchini",
+  priorTexts: [
+    "uovo, pancetta, pecorino, spaghetti",
+    "Sono Fiammetta. Hai elencato questi ingredienti: uovo, pancetta, pecorino, spaghetti.\nVuoi che ti prepari il pranzo o la cena con questi?",
+    "si",
+    "Sono Fiammetta. Perfetto. Preferisci il pranzo o la cena?",
+    "cena",
+    "Sono Fiammetta. Per la cena con uovo, pancetta, pecorino e spaghetti va bene?",
+  ],
+});
+assert.equal(carbonaraYes.templateId, "food_named_dish");
+assert.equal(carbonaraYes.autoEligible, true);
+assert.equal(
+  carbonaraYes.draft,
+  "Sono Fiammetta. Perfetto, Tommaso. Per la cena preparo una carbonara.",
+);
+assert.doesNotMatch(carbonaraYes.draft, /uovo|pancetta|pecorino|spaghetti|Userò/i);
+assert.equal(providerCalls, callsBeforeLunch);
+
+const carbonaraRepeat = await routeInboundMessage("si", {
+  contactDisplayName: "Tommaso Pelucchini",
+  priorTexts: [
+    "uovo, pancetta, pecorino, spaghetti",
+    "Sono Fiammetta. Hai elencato questi ingredienti: uovo, pancetta, pecorino, spaghetti.\nVuoi che ti prepari il pranzo o la cena con questi?",
+    "Sono Fiammetta. Perfetto. Preferisci il pranzo o la cena?",
+    "Sono Fiammetta. Per la cena con uovo, pancetta, pecorino e spaghetti va bene?",
+    carbonaraYes.draft,
+  ],
+});
+assert.equal(carbonaraRepeat.skipped, true);
+assert.equal(carbonaraRepeat.draft, "");
+assert.equal(providerCalls, callsBeforeLunch);
+
+const repeatedMealAsk = await routeInboundMessage("si", {
+  priorTexts: [
+    "uovo, pancetta, pecorino, spaghetti",
+    "Sono Fiammetta. Perfetto. Preferisci il pranzo o la cena?",
+  ],
+});
+assert.equal(repeatedMealAsk.skipped, true);
+assert.equal(repeatedMealAsk.draft, "");
+
 process.env.SPECIALIST_APPOINTMENTS = "0";
 const disabled = await routeInboundMessage(
   "Vorrei un appuntamento martedì alle 15",
