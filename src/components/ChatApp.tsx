@@ -12,6 +12,18 @@ import {
 import { Thread } from "./Thread";
 import { fiammettaRouteLabel, withFiammettaIntro } from "@/lib/agents/fiammetta";
 import {
+  FOOD_AUTO_SEND_TRIED_KEY,
+  FOOD_SEND_MODE_KEY,
+  WINDOW_CLOSED_MESSAGE,
+  isFoodCustomerDraft,
+  isWindowClosedSendError,
+  parseFoodSendMode,
+  parseTriedSends,
+  shouldAutoSendFoodDraft,
+  type AutoSendOutcome,
+  type FoodSendMode,
+} from "@/lib/food-send-mode";
+import {
   buildDishDraft,
   ingredientMealQuestion,
   mealChoiceFollowUp,
@@ -161,6 +173,10 @@ export function ChatApp() {
   const [composerEpoch, setComposerEpoch] = useState(0);
   /** lastMessageAt already opened, so the inbox dot stays off until a newer message. */
   const [seenInboxAt, setSeenInboxAt] = useState<Record<string, string>>({});
+  /** Manuale keeps the food draft in the composer. Automatica sends it once. */
+  const [sendMode, setSendMode] = useState<FoodSendMode>("manual");
+  /** Survives inbox polls, which clear the generic load error. */
+  const [sendError, setSendError] = useState<string | null>(null);
 
   /** `${version}:${messageId}` already auto-drafted — avoid poll loops. */
   const autoHandledInboundIdRef = useRef<string | null>(null);
@@ -174,11 +190,17 @@ export function ChatApp() {
   /** Bumped on conversation change / clear so stale async work is ignored. */
   const suggestGenerationRef = useRef(0);
   const suggestInFlightRef = useRef(false);
+  const sendModeRef = useRef<FoodSendMode>("manual");
+  sendModeRef.current = sendMode;
+  /** Inbound ids already auto-sent, or refused (24h) so a reopen does not retry. */
+  const triedSendsRef = useRef<Record<string, AutoSendOutcome>>({});
+  const windowClosedRef = useRef(false);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId),
     [conversations, selectedId],
   );
+  windowClosedRef.current = selected?.serviceWindowStatus === "closed";
 
   /** Prefer E.164 phone; fall back to conversation id for SQLite memory key. */
   const memoryContactKey = selected?.contactAddress || selectedId;
@@ -263,6 +285,14 @@ export function ChatApp() {
 
   useEffect(() => {
     setSeenInboxAt(readSeenInbox());
+    try {
+      setSendMode(parseFoodSendMode(window.localStorage.getItem(FOOD_SEND_MODE_KEY)));
+      triedSendsRef.current = parseTriedSends(
+        window.localStorage.getItem(FOOD_AUTO_SEND_TRIED_KEY),
+      );
+    } catch {
+      setSendMode("manual");
+    }
   }, []);
 
   useEffect(() => {
@@ -318,6 +348,7 @@ export function ChatApp() {
     setSuggesting(false);
     setSuggestionMeta(null);
     setRouteBadge(null);
+    setSendError(null);
   }, [status?.configured, selectedId, loadMessages]);
 
   async function rememberSnippet(params: {
@@ -476,12 +507,81 @@ export function ChatApp() {
     };
   }
 
+  function rememberTriedSend(messageId: string, outcome: AutoSendOutcome) {
+    const next = { ...triedSendsRef.current, [messageId]: outcome };
+    const ids = Object.keys(next);
+    const trimmed =
+      ids.length > 200
+        ? Object.fromEntries(ids.slice(-200).map((id) => [id, next[id]]))
+        : next;
+    triedSendsRef.current = trimmed;
+    try {
+      window.localStorage.setItem(
+        FOOD_AUTO_SEND_TRIED_KEY,
+        JSON.stringify(trimmed),
+      );
+    } catch {
+      /* the in-memory set still blocks a loop in this page load */
+    }
+  }
+
+  function chooseSendMode(next: FoodSendMode) {
+    sendModeRef.current = next;
+    setSendMode(next);
+    try {
+      window.localStorage.setItem(FOOD_SEND_MODE_KEY, next);
+    } catch {
+      /* the choice still applies until reload */
+    }
+    if (next !== "automatic") return;
+    const latest = findLatestInbound(messages);
+    if (!latest) return;
+    const inbound = inboundComposerText(latest);
+    const local = inbound ? foodLocalDraft(inbound, latest) : null;
+    if (!local || local.draft.trim() !== draft.trim()) return;
+    void maybeAutoSendFoodDraft(latest.id, local.draft);
+  }
+
+  /**
+   * Sends the exact food draft just built for this inbound. Claims the id
+   * before the request so a reopen or a poll cannot send it again.
+   */
+  async function maybeAutoSendFoodDraft(messageId: string | null, text: string) {
+    const id = messageId?.trim() || "";
+    if (
+      !shouldAutoSendFoodDraft({
+        mode: sendModeRef.current,
+        messageId: id,
+        tried: triedSendsRef.current,
+      })
+    ) {
+      if (id && triedSendsRef.current[id] === "window") {
+        setSendError(WINDOW_CLOSED_MESSAGE);
+      }
+      return;
+    }
+    rememberTriedSend(id, "error");
+    if (windowClosedRef.current) {
+      rememberTriedSend(id, "window");
+      setSendError(WINDOW_CLOSED_MESSAGE);
+      return;
+    }
+    setSuggestionMeta((prev) =>
+      [prev, "Invio automatico"].filter(Boolean).join(" · "),
+    );
+    const outcome = await handleSend(text);
+    rememberTriedSend(id, outcome);
+    if (outcome === "window") setSendError(WINDOW_CLOSED_MESSAGE);
+  }
+
   function showFoodLocalDraft(
     localDraft: { draft: string; label: string; summary: string },
     source: "auto" | "manual",
     preview: string,
+    messageId: string | null,
   ) {
     const foodBadge = fiammettaRouteLabel("Cibo");
+    const tried = messageId ? triedSendsRef.current[messageId] : undefined;
     applyComposerDraft(localDraft.draft);
     setRouteBadge({ label: foodBadge, specialistId: "food" });
     setSuggestionMeta(
@@ -491,12 +591,15 @@ export function ChatApp() {
         preview ? `msg “${preview}”` : null,
         localDraft.label,
         localDraft.summary,
+        tried === "sent" ? "già inviata, non reinviata" : null,
+        tried === "window" ? "finestra 24h chiusa, non riprovata" : null,
       ]
         .filter(Boolean)
         .join(" · "),
     );
     setError(null);
     setSuggesting(false);
+    void maybeAutoSendFoodDraft(messageId, localDraft.draft);
   }
 
   async function runSuggestReply(params: {
@@ -515,7 +618,12 @@ export function ChatApp() {
           ? inboundComposerText(params.sourceMessage) || text
           : text,
       );
-      showFoodLocalDraft(localDraft, params.source, preview);
+      showFoodLocalDraft(
+        localDraft,
+        params.source,
+        preview,
+        params.sourceMessage?.id ?? null,
+      );
       return;
     }
 
@@ -641,6 +749,15 @@ export function ChatApp() {
           .filter(Boolean)
           .join(" · "),
       );
+      if (
+        isFoodCustomerDraft(templateId) ||
+        suggestion.specialistId === "food"
+      ) {
+        void maybeAutoSendFoodDraft(
+          params.sourceMessage?.id ?? null,
+          suggestion.draft,
+        );
+      }
     } catch (err) {
       if (params.generation !== suggestGenerationRef.current) return;
       setSuggesting(false);
@@ -683,6 +800,7 @@ export function ChatApp() {
         localDraft,
         "auto",
         shortPreview(inbound),
+        message.id,
       );
       return;
     }
@@ -722,10 +840,11 @@ export function ChatApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- poll-driven; guard via autoHandledInboundIdRef
   }, [messages, selectedId, composerEpoch, suggesting, transcribing, sending]);
 
-  async function handleSend(text: string) {
-    if (!selectedId) return;
+  async function handleSend(text: string): Promise<AutoSendOutcome> {
+    if (!selectedId) return "error";
     setSending(true);
     setError(null);
+    setSendError(null);
     try {
       const res = await fetch("/api/messages", {
         method: "POST",
@@ -743,27 +862,40 @@ export function ChatApp() {
         };
       };
       if (!res.ok) {
+        const windowClosed = isWindowClosedSendError({
+          message: data.error?.message,
+          code: data.error?.code,
+          name: data.error?.name,
+        });
         const parts = [
-          data.error?.message,
-          data.error?.code && !data.error?.message?.includes(data.error.code)
+          windowClosed ? WINDOW_CLOSED_MESSAGE : data.error?.message,
+          !windowClosed &&
+          data.error?.code &&
+          !data.error?.message?.includes(data.error.code)
             ? `(${data.error.code})`
             : null,
         ].filter(Boolean);
-        setError(
+        const message =
           parts.length > 0
             ? parts.join(" ")
-            : `Send failed (HTTP ${res.status})`,
-        );
-      } else {
-        void rememberSnippet({ role: "ai", content: text });
-        setDraft("");
-        setSelectedMessage(null);
-        setSuggestionMeta(null);
-        setRouteBadge(null);
+            : `Send failed (HTTP ${res.status})`;
+        setSendError(message);
+        return windowClosed ? "window" : "error";
       }
-      await Promise.all([loadMessages(selectedId), loadConversations()]);
+      void rememberSnippet({ role: "ai", content: text });
+      setDraft("");
+      setSelectedMessage(null);
+      setSuggestionMeta(null);
+      setRouteBadge(null);
+      try {
+        await Promise.all([loadMessages(selectedId), loadConversations()]);
+      } catch {
+        /* the message is already accepted; a poll will refresh the thread */
+      }
+      return "sent";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Send failed");
+      setSendError(err instanceof Error ? err.message : "Send failed");
+      return "error";
     } finally {
       setSending(false);
     }
@@ -869,6 +1001,35 @@ export function ChatApp() {
             health={ollamaHealth}
             checking={ollamaChecking && !ollamaHealth}
           />
+          <div className="send-mode" role="radiogroup" aria-label="Invio bozza cibo">
+            <span className="send-mode-label">Invio cibo</span>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={sendMode === "manual"}
+              className={
+                sendMode === "manual"
+                  ? "send-mode-option is-active"
+                  : "send-mode-option"
+              }
+              onClick={() => chooseSendMode("manual")}
+            >
+              Manuale
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={sendMode === "automatic"}
+              className={
+                sendMode === "automatic"
+                  ? "send-mode-option is-active"
+                  : "send-mode-option"
+              }
+              onClick={() => chooseSendMode("automatic")}
+            >
+              Automatica
+            </button>
+          </div>
         </div>
         <Thread
           conversationId={selectedId}
@@ -881,7 +1042,11 @@ export function ChatApp() {
             void handleSelectMessage(m);
           }}
         />
-        {error ? <p className="banner-error" role="alert">{error}</p> : null}
+        {sendError || error ? (
+          <p className="banner-error" role="alert">
+            {sendError || error}
+          </p>
+        ) : null}
         <Composer
           disabled={!selectedId}
           sending={sending}
@@ -917,7 +1082,9 @@ export function ChatApp() {
             setRouteBadge(null);
           }}
           onSuggestReply={handleSuggestReply}
-          onSend={handleSend}
+          onSend={async (text) => {
+            await handleSend(text);
+          }}
         />
         <MemoryPanel
           contactKey={memoryContactKey}
