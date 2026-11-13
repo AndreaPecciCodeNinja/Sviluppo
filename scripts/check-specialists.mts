@@ -623,9 +623,9 @@ assert.match(calls[0].system, /Non dedurre allergeni/);
 assert.match(calls[0].system, /alimenti_non_usati/);
 assert.match(calls[0].user, /uova, spaghetti, pecorino e pepe/);
 assert.match(calls[1].user, /Il nome «upva» non combacia con «uova»/);
-assert.match(pepperCena, /^Antipasto\nPiatto: nessuno\nIngredienti: nessuno\nPreparazione: Con questi alimenti non c'è un antipasto\./);
-assert.match(pepperCena, /Primo\nPiatto: Spaghetti con uova, pecorino e pepe\nIngredienti: spaghetti, uova, pecorino, pepe\nPreparazione: Cuoci gli spaghetti/);
-assert.doesNotMatch(pepperCena, /\{|\}|"portata"|alimenti_non_usati/);
+assert.match(pepperCena, /^Antipasto\nPiatto: nessuno\nIngredienti: nessuno/);
+assert.match(pepperCena, /Primo\nPiatto: Spaghetti con uova, pecorino e pepe\nIngredienti: spaghetti, uova, pecorino, pepe/);
+assert.doesNotMatch(pepperCena, /Preparazione|Cuoci|\{|\}|"portata"|alimenti_non_usati/);
 assert.doesNotMatch(pepperCena, /elenchi gli alimenti|allergen|upva/i);
 
 calls = [];
@@ -659,8 +659,7 @@ try {
   globalThis.fetch = originalFetch;
 }
 assert.match(menuReply, /Piatto: Spaghetti con uova, pecorino e pepe/);
-assert.match(menuReply, /Preparazione:/);
-assert.doesNotMatch(menuReply, /\{|alimenti_non_usati/);
+assert.doesNotMatch(menuReply, /Preparazione|Cuoci|\{|alimenti_non_usati/);
 assert.match(calls[0].user, /uova/);
 assert.match(calls[0].user, /pepe/);
 assert.match(calls[0].user, /pecorino/);
@@ -671,21 +670,22 @@ calls = [];
 const againAnswer = "Resto sulla cena con uova, spaghetti, pepe e pecorino.";
 globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
   const body = JSON.parse(String(init?.body ?? "{}")) as {
-    messages?: Array<{ role?: string; content?: string }>;
+    system?: string;
+    messages?: Array<{ content?: string }>;
   };
   calls.push({
     url: String(_url),
     model: "",
     temperature: undefined,
     format: undefined,
-    system: body.messages?.find((item) => item.role === "system")?.content ?? "",
-    user: body.messages?.find((item) => item.role === "user")?.content ?? "",
+    system: body.system ?? "",
+    user: body.messages?.[0]?.content ?? "",
     hasKey: false,
   });
-  return new Response(JSON.stringify({ message: { content: againAnswer } }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ content: [{ type: "text", text: againAnswer }] }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
 }) as typeof fetch;
 let againReply = "";
 try {
@@ -695,10 +695,53 @@ try {
 }
 assert.equal(againReply, againAnswer);
 assert.match(calls[0].system, /Non chiedere gli ingredienti/i);
-assert.match(calls[0].user, /Pasto già scelto: la cena/);
+assert.match(calls[0].system, /Non descrivere come si prepara/i);
+assert.match(calls[0].user, /Pasto: la cena/);
 assert.match(calls[0].user, /uova, spaghetti, pepe e pecorino/);
 assert.match(calls[0].user, /Ha già detto sì/);
+assert.match(calls[0].user, /Nuova frase: e dopo\?/);
 assert.doesNotMatch(againReply, /elenchi gli alimenti/);
+
+const peoplePrior = [
+  "uova, spaghetti, pepe, pecorino",
+  "Vuoi che ti prepari il pranzo o la cena?",
+  "siamo in 4, niente piccante",
+];
+calls = [];
+globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+  const body = JSON.parse(String(init?.body ?? "{}")) as {
+    system?: string;
+    messages?: Array<{ content?: string }>;
+  };
+  calls.push({
+    url: String(_url),
+    model: "",
+    temperature: undefined,
+    format: undefined,
+    system: body.system ?? "",
+    user: body.messages?.[0]?.content ?? "",
+    hasKey: false,
+  });
+  return new Response(
+    JSON.stringify({ content: [{ type: "text", text: "Va bene, in 4, senza piccante." }] }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}) as typeof fetch;
+let peopleReply = "";
+try {
+  peopleReply = await answerCustomer({
+    question: "e il dolce lo saltiamo",
+    prior: peoplePrior,
+  });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.match(calls[0].user, /uova, spaghetti, pepe e pecorino/);
+assert.match(calls[0].user, /Persone: 4/);
+assert.match(calls[0].user, /niente piccante/);
+assert.match(calls[0].user, /già chiesto, non ancora scelto/);
+assert.match(calls[0].system, /Non chiedere gli ingredienti/i);
+assert.doesNotMatch(peopleReply, /elenchi gli alimenti/);
 if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
 else process.env.ANTHROPIC_API_KEY = savedKey;
 

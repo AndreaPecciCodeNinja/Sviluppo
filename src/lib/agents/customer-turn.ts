@@ -1,10 +1,11 @@
-import { completeWithClaude, completeWithOllama, extractJsonObject } from "./llm";
+import { completeWithClaude, extractJsonObject } from "./llm";
 import {
   bareMealChoice,
   chosenMeal,
   ingredientsFromThread,
   isBareAffirmation,
   isMealAcceptanceQuestion,
+  isOwnFoodReply,
   joinItalian,
   type MealName,
 } from "./meal-choice";
@@ -85,12 +86,14 @@ type ChefMenu = {
 };
 
 const FOLLOW_PROMPT = [
-  "Conosci già le risposte della persona. Non chiederle di nuovo.",
-  "Non chiedere gli ingredienti. Non chiedere se è il pranzo o la cena.",
-  "Usa solo gli alimenti scritti dalla persona, più sale, pepe, olio e acqua.",
+  "Hai già questa conversazione. Non richiedere di nuovo ciò che è già stato detto.",
+  "Non chiedere gli ingredienti.",
+  "Non chiedere il pranzo o la cena se è già stato chiesto o scelto.",
+  "Non chiedere di nuovo le persone o i vincoli già scritti.",
+  "Non descrivere come si prepara un piatto.",
+  "Usa solo gli alimenti già scritti, più sale, pepe, olio e acqua.",
   "Non dedurre allergeni.",
-  "Rispondi in italiano alla nuova frase, con quel pasto e quegli alimenti.",
-  "Non scrivere JSON.",
+  "Rispondi in italiano alla nuova frase. Non scrivere JSON.",
 ].join("\n");
 
 function mealPhrase(question: string): "la cena" | "il pranzo" {
@@ -108,11 +111,6 @@ function wantsTheMenu(text: string): boolean {
   return /(?:fammi|preparami|prepara|scrivi|voglio)\s+il\s+men[uù](?![\p{L}\p{N}])/iu.test(
     normalized,
   );
-}
-
-function ollamaError(err: unknown): string {
-  const message = err instanceof Error ? err.message : "errore sconosciuto";
-  return `Ollama non ha scritto il menù. ${message}`;
 }
 
 function claudeError(err: unknown): string {
@@ -290,19 +288,16 @@ function formatMenu(menu: ChefMenu, ingredients: readonly string[]): string {
     const row = menu.menu.find((item) => item.portata.toLocaleLowerCase("it") === course);
     const title = course.charAt(0).toLocaleUpperCase("it") + course.slice(1);
     if (!row || row.piatto === null) {
-      const why = row?.preparazione || row?.note || "Portata non prevista.";
-      lines.push(title, "Piatto: nessuno", "Ingredienti: nessuno", `Preparazione: ${why}`, "");
+      lines.push(title, "Piatto: nessuno", "Ingredienti: nessuno", "");
       continue;
     }
     const foods = row.ingredienti
       .map((item) => canonicalFood(item, allowed) ?? item.trim())
       .filter(Boolean);
-    const steps = row.preparazione || row.note || "nessuna";
     lines.push(
       title,
       `Piatto: ${row.piatto}`,
       `Ingredienti: ${foods.length ? foods.join(", ") : "nessuno"}`,
-      `Preparazione: ${steps}`,
       "",
     );
   }
@@ -310,9 +305,8 @@ function formatMenu(menu: ChefMenu, ingredients: readonly string[]): string {
     const unused = menu.alimenti_non_usati
       .map((item) => canonicalFood(item, ingredients) ?? item.trim())
       .filter(Boolean);
-    lines.push(`Alimenti non usati: ${unused.join(", ")}`, "");
+    lines.push(`Alimenti non usati: ${unused.join(", ")}`);
   }
-  if (menu.note) lines.push(menu.note);
   return lines.join("\n").trim();
 }
 
@@ -380,49 +374,84 @@ async function chefMenu(
   return `Claude non ha scritto il menù. ${secondProblems.join(" ")}`;
 }
 
-function confirmedMeal(prior: readonly string[]): {
-  meal: "la cena" | "il pranzo";
+function customerLines(prior: readonly string[]): string[] {
+  return prior.filter((line) => !isOwnFoodReply(line) && !isMealAcceptanceQuestion(line));
+}
+
+function peopleFrom(lines: readonly string[]): string | null {
+  const blob = lines.join("\n");
+  const digit =
+    blob.match(/(\d+)\s*(?:persone|persona|adulti|bambini)/iu) ??
+    blob.match(/siamo\s+in\s+(\d+)/iu);
+  if (digit) return digit[1];
+  const word = blob.match(/siamo\s+in\s+(due|tre|quattro|cinque|sei|sette|otto)/iu);
+  return word ? word[1] : null;
+}
+
+function constraintsFrom(lines: readonly string[]): string[] {
+  const found: string[] = [];
+  for (const line of lines) {
+    const matches =
+      line.match(/(?:senza|niente|non voglio|non mangiamo|non posso)\s+[^.,;\n]+/giu) ??
+      [];
+    for (const item of matches) found.push(item.replace(/\s+/g, " ").trim());
+  }
+  return found;
+}
+
+function rememberedContext(prior: readonly string[]): {
+  meal: "la cena" | "il pranzo" | null;
   ingredients: string[];
+  mealAsked: boolean;
   saidYes: boolean;
+  people: string | null;
+  constraints: string[];
 } | null {
   const ingredients = ingredientsFromThread(prior);
-  if (ingredients.length < 2) return null;
   const choice = [...prior].reverse().find((line) => bareMealChoice(line));
   const acceptance = [...prior].reverse().find((line) => isMealAcceptanceQuestion(line));
-  const hasMenu = prior.some((line) => /alimenti_non_usati/iu.test(line));
+  const mealAsked = prior.some((line) => /pranzo o la cena|pranzo o cena/iu.test(line));
   const saidYes = prior.some((line) => isBareAffirmation(line) || wantsTheMenu(line));
-  if (!choice && !hasMenu && !(acceptance && saidYes)) return null;
-  const meal: "la cena" | "il pranzo" = choice
+  const lines = customerLines(prior);
+  const people = peopleFrom(lines);
+  const constraints = constraintsFrom(lines);
+  const meal: "la cena" | "il pranzo" | null = choice
     ? bareMealChoice(choice) === "pranzo"
       ? "il pranzo"
       : "la cena"
     : acceptance
       ? mealPhrase(acceptance)
-      : "la cena";
-  return { meal, ingredients, saidYes };
+      : null;
+  if (!ingredients.length && !meal && !people && constraints.length === 0) return null;
+  return { meal, ingredients, mealAsked, saidYes, people, constraints };
 }
 
-async function followUpFromOllama(
+async function followUpFromClaude(
   question: string,
-  remembered: { meal: string; ingredients: readonly string[]; saidYes: boolean },
+  prior: readonly string[],
+  memory: NonNullable<ReturnType<typeof rememberedContext>>,
 ): Promise<string> {
-  const listed = joinItalian(remembered.ingredients);
+  const listed = memory.ingredients.length ? joinItalian(memory.ingredients) : "non ancora detti";
+  const meal = memory.meal ?? (memory.mealAsked ? "già chiesto, non ancora scelto" : "non chiesto");
   try {
-    const completed = await completeWithOllama({
+    const completed = await completeWithClaude({
       system: FOLLOW_PROMPT,
       userText: [
-        `Pasto già scelto: ${remembered.meal}`,
-        `Alimenti già scritti, e solo questi: ${listed}`,
-        remembered.saidYes ? "Ha già detto sì." : "Il pasto è già stato scelto.",
+        `Ingredienti già scritti: ${listed}`,
+        `Pasto: ${meal}`,
+        memory.saidYes ? "Ha già detto sì." : "Non ha ancora confermato con un sì.",
+        `Persone: ${memory.people ?? "non dette"}`,
+        `Vincoli già scritti: ${memory.constraints.length ? memory.constraints.join("; ") : "nessuno"}`,
+        "Conversazione già avvenuta:",
+        ...prior.map((line) => `- ${line.replace(/\s+/g, " ").trim()}`),
         `Nuova frase: ${question}`,
       ].join("\n"),
-      json: false,
     });
     const answer = completed.raw.trim();
-    if (!answer) return "Ollama non ha scritto il menù. Risposta vuota.";
+    if (!answer) return "Claude non ha scritto la risposta. Risposta vuota.";
     return answer;
   } catch (err) {
-    return ollamaError(err);
+    return claudeError(err);
   }
 }
 
@@ -455,8 +484,8 @@ export async function answerCustomer(turn: CustomerTurn): Promise<string> {
   }
   const sequenced = provaFiammettaReply(question, prior);
   if (sequenced?.draft) return sequenced.draft;
-  const remembered = confirmedMeal(prior);
-  if (remembered) return followUpFromOllama(question, remembered);
+  const memory = rememberedContext(prior);
+  if (memory) return followUpFromClaude(question, prior, memory);
   const asked = question.replace(/\s+/g, " ").trim();
   return withFiammettaIntro(
     `Sulla tua domanda «${asked}»: se mi elenchi gli alimenti, ti chiedo se è il pranzo o la cena.`,

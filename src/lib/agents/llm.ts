@@ -237,7 +237,7 @@ export async function completeWithOllama(params: {
 export async function completeWithClaude(params: {
   system: string;
   userText: string;
-  schema: Record<string, unknown>;
+  schema?: Record<string, unknown>;
 }): Promise<{ raw: string; model: string }> {
   const { apiKey } = getClaudeConfig();
   if (!apiKey) {
@@ -249,7 +249,7 @@ export async function completeWithClaude(params: {
     model,
     system: params.system,
     userContent: params.userText,
-    maxTokens: 2048,
+    maxTokens: params.schema ? 2048 : 1024,
     schema: params.schema,
   });
   return { raw, model };
