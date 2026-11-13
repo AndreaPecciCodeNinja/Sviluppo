@@ -118,6 +118,23 @@ export function chosenMeal(text: string): MealName | null {
   return hits[0];
 }
 
+/**
+ * The message is only "cena" or "pranzo", or that word is the last line
+ * (a quoted question can name both meals above it).
+ */
+export function bareMealChoice(text: string): MealName | null {
+  const lines = text
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return null;
+  const normalized = normalizeAffirmation(lines[lines.length - 1])
+    .replace(/^(?:per\s+)?(?:il|la|lo)\s+/iu, "")
+    .replace(/^(?:solo|soltanto)\s+/iu, "");
+  if (normalized === "pranzo" || normalized === "cena") return normalized;
+  return null;
+}
+
 const GREETING_WORD =
   "(?:ciao|salve|buongiorno|buonasera|buon\\s+pomeriggio|ehi|hey|hola)";
 
@@ -288,7 +305,7 @@ export function mealDishContext(
   priorTexts: readonly string[],
   displayName?: string | null,
 ): MealDishContext | null {
-  const meal = chosenMeal(inbound);
+  const meal = bareMealChoice(inbound) ?? chosenMeal(inbound);
   if (!meal) return null;
   const stripped = stripLeadingGreeting(
     inbound.replace(

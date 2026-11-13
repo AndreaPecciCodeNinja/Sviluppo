@@ -141,6 +141,21 @@ assert.equal(meal.specialistId, "food");
 assert.equal(meal.routeLabel, "Fiammetta → Cibo");
 assert.equal(meal.templateId, "food_meal_choice");
 
+const callsBeforeCaponata = providerCalls;
+const caponataReply = await routeInboundMessage("cena", {
+  priorTexts: [
+    "Pomodori, zucchine, melanzane, aglio",
+    "Sono Fiammetta. Hai elencato questi ingredienti: Pomodori, zucchine, melanzane, aglio.\nVuoi che ti prepari il pranzo o la cena con questi?",
+  ],
+});
+assert.equal(providerCalls, callsBeforeCaponata);
+assert.equal(caponataReply.templateId, "food_dish_proposal");
+assert.match(
+  caponataReply.draft,
+  /^Sono Fiammetta\. Per la cena ti propongo una caponata di verdure/,
+);
+assert.doesNotMatch(caponataReply.draft, /un piatto con|Vuoi che ti prepari/i);
+
 const callsBeforeDish = providerCalls;
 const cacaoDish = await routeInboundMessage("Cena", {
   priorTexts: ["uova, farina, zucchero, cacao"],
