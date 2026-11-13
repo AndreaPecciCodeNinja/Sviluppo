@@ -132,6 +132,19 @@ assert.match(
 assert.match(lunchDish.draft, /carne, pane, pomodori e insalata/);
 assert.doesNotMatch(lunchDish.draft, /Vuoi che ti prepari|pranzo o la cena/i);
 
+const mixedDish = await routeInboundMessage("Si, preparami il pranzo.", {
+  contactDisplayName: "Tommaso",
+  priorTexts: [
+    "Ciao Andrea, farina, zucchero, cacao, uova",
+    "Hai elencato questi ingredienti: Ciao Andrea, farina, zucchero, cacao, uova.\nVuoi che ti prepari il *pranzo* o la *cena* con questi?",
+    "Carne, pane, pomodori, insalata",
+  ],
+});
+assert.equal(mixedDish.templateId, "food_dish_proposal");
+assert.match(mixedDish.draft, /panino con carne/);
+assert.match(mixedDish.draft, /Carne, pane, pomodori e insalata/);
+assert.doesNotMatch(mixedDish.draft, /torta|cacao|Andrea|Ciao Tommaso|Tommaso/i);
+
 const otherDish = await routeInboundMessage("pranzo", {
   priorTexts: ["pollo, riso, zucchine"],
 });

@@ -118,8 +118,54 @@ export function chosenMeal(text: string): MealName | null {
   return hits[0];
 }
 
-function splitItems(text: string): string[] {
+const GREETING_WORD =
+  "(?:ciao|salve|buongiorno|buonasera|buon\\s+pomeriggio|ehi|hey|hola)";
+
+/** Drop "Ciao Andrea," so a greeting and a name are not ingredients. */
+function stripLeadingGreeting(text: string): string {
   return text
+    .replace(
+      new RegExp(
+        `^${GREETING_WORD}\\b(?:\\s+[^\\s,;.:]+)(?=\\s*[,;:]|\\s*$)[\\s,;.:]*`,
+        "iu",
+      ),
+      "",
+    )
+    .replace(new RegExp(`^${GREETING_WORD}\\b[\\s,;.:]*`, "iu"), "")
+    .trim();
+}
+
+function isGreetingItem(part: string): boolean {
+  return new RegExp(`^${GREETING_WORD}\\b`, "iu").test(part);
+}
+
+/** Our own meal question or dish draft. It echoes an older list, it is not one. */
+function isAssistantFoodEcho(text: string): boolean {
+  return (
+    /hai elencato questi ingredienti/iu.test(text) ||
+    /ti propongo/iu.test(text) ||
+    /^sono fiammetta\b/iu.test(text.trim()) ||
+    /vuoi che ti prepari il\s+\*?pranzo/iu.test(text) ||
+    /preferisci il pranzo o la cena/iu.test(text)
+  );
+}
+
+/**
+ * Name for a customer-facing draft, if one is needed.
+ * Only the WhatsApp contact display name. Never a fixed name, and never a
+ * name copied from a greeting in the thread. Empty when Bird has no name.
+ */
+export function customerNameFromDisplay(
+  displayName: string | null | undefined,
+): string | null {
+  const name = displayName?.replace(/\s+/g, " ").trim() ?? "";
+  if (!name || /^unknown$/iu.test(name)) return null;
+  if (/^[+\d][\d\s().-]{5,}$/.test(name)) return null;
+  return name;
+}
+
+function splitItems(text: string): string[] {
+  return stripLeadingGreeting(text)
     .replace(/\*([^*]+)\*/g, "$1")
     .split(/[,;\n•]+|\s+e\s+/iu)
     .map((part) => part.replace(/^[\s:.-]+|[\s.?!]+$/g, "").trim())
@@ -128,33 +174,43 @@ function splitItems(text: string): string[] {
         part.length > 1 &&
         part.length < 32 &&
         part.split(/\s+/).length <= 3 &&
+        !isGreetingItem(part) &&
         !/pranzo|cena|vuoi|elencat|ingredient|prepar|preferisci|quest[aei]|con questi/iu.test(
           part,
         ),
     );
 }
 
-export function ingredientsFromThread(priorTexts: readonly string[]): string[] {
-  const found: string[] = [];
+function withoutContactName(
+  items: readonly string[],
+  displayName: string | null | undefined,
+): string[] {
+  const contact = customerNameFromDisplay(displayName)?.toLocaleLowerCase("it");
+  if (!contact) return [...items];
+  return items.filter((item) => item.toLocaleLowerCase("it") !== contact);
+}
+
+/**
+ * Ingredients for a dish draft: only the last customer list before the meal
+ * choice. Older lists are not merged. Greetings and the contact name are not
+ * ingredients.
+ */
+export function ingredientsFromThread(
+  priorTexts: readonly string[],
+  displayName?: string | null,
+): string[] {
+  let latest: string[] = [];
   for (const text of priorTexts) {
+    if (isAssistantFoodEcho(text)) continue;
     const labeled = text.match(/ingredienti\s*:\s*([^\n]+)/iu);
-    if (labeled) {
-      found.push(...splitItems(labeled[1]));
+    const source = labeled ? labeled[1] : text;
+    if (!labeled && (!looksLikeIngredientList(text) || looksLikeMealQuestion(text))) {
       continue;
     }
-    if (looksLikeIngredientList(text) && !looksLikeMealQuestion(text)) {
-      found.push(...splitItems(text));
-    }
+    const items = withoutContactName(splitItems(source), displayName);
+    if (items.length >= 2) latest = items;
   }
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const item of found) {
-    const key = item.toLocaleLowerCase("it");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(item);
-  }
-  return unique;
+  return latest;
 }
 
 export function joinItalian(items: readonly string[]): string {
@@ -165,15 +221,15 @@ export function joinItalian(items: readonly string[]): string {
 /** A few obvious home dishes. Unknown lists still get a plate, not another question. */
 export function heuristicDish(ingredients: readonly string[]): string | null {
   const blob = ingredients.join(" ");
+  if (/carne/iu.test(blob) && /pane/iu.test(blob)) {
+    return "un panino con carne";
+  }
   if (
     /cacao|cioccolat/iu.test(blob) &&
     /farina/iu.test(blob) &&
     /uov/iu.test(blob)
   ) {
     return "una torta al cacao";
-  }
-  if (/carne/iu.test(blob) && /pane/iu.test(blob)) {
-    return "un panino con carne";
   }
   return null;
 }
@@ -185,14 +241,20 @@ export function proposedDishName(ingredients: readonly string[]): string {
 export function mealDishContext(
   inbound: string,
   priorTexts: readonly string[],
+  displayName?: string | null,
 ): MealDishContext | null {
   const meal = chosenMeal(inbound);
   if (!meal) return null;
-  const stripped = inbound.replace(
-    /(?<![\p{L}\p{N}])(pranzo|cena)(?![\p{L}\p{N}])/giu,
-    " ",
+  const stripped = stripLeadingGreeting(
+    inbound.replace(
+      /(?<![\p{L}\p{N}])(pranzo|cena)(?![\p{L}\p{N}])/giu,
+      " ",
+    ),
   );
-  const ingredients = ingredientsFromThread([...priorTexts, stripped]);
+  const ingredients = ingredientsFromThread(
+    [...priorTexts, stripped],
+    displayName,
+  );
   if (ingredients.length < 2) return null;
   return { meal, ingredients, dish: proposedDishName(ingredients) };
 }

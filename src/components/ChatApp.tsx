@@ -38,7 +38,7 @@ const AUTO_DRAFT_TEMPLATE_IDS = new Set([
  * Bump when auto-draft behavior changes so an inbound id already handled by
  * an older bundle is drafted again once (same browser session / HMR).
  */
-const AUTO_DRAFT_VERSION = "food-dish-3";
+const AUTO_DRAFT_VERSION = "food-dish-4";
 const SUGGEST_TIMEOUT_MS = 25_000;
 const OLLAMA_TIMEOUT_MESSAGE =
   "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
@@ -378,7 +378,7 @@ export function ChatApp() {
       .filter(Boolean)
       .slice(-40);
     const mealAsk = mealChoiceFollowUp(text, priorTexts);
-    const dishCtx = mealDishContext(text, priorTexts);
+    const dishCtx = mealDishContext(text, priorTexts, selected?.displayName);
     const foodBadge = fiammettaRouteLabel("Cibo");
     const localDraft = mealAsk
       ? {
@@ -438,6 +438,7 @@ export function ChatApp() {
           text,
           contactKey: memoryContactKey,
           conversationId: selectedId,
+          contactDisplayName: selected?.displayName,
           priorTexts,
         }),
         signal: AbortSignal.timeout(SUGGEST_TIMEOUT_MS),

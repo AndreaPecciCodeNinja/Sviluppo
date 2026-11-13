@@ -131,6 +131,8 @@ export type RouteOptions = {
   conversationId?: string | null;
   /** Earlier thread texts (not the inbound being routed). */
   priorTexts?: readonly string[] | null;
+  /** Bird contact display name. Used only when a draft addresses the customer. */
+  contactDisplayName?: string | null;
 };
 
 /**
@@ -170,7 +172,9 @@ export async function routeInboundMessage(
       };
     }
 
-    const dish = await resolveMealDishDraft(text, priorTexts);
+    const dish = await resolveMealDishDraft(text, priorTexts, {
+      displayName: options.contactDisplayName,
+    });
     if (dish) {
       return {
         draft: withFiammettaIntro(dish.draft),

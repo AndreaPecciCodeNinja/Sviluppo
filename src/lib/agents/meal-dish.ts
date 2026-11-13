@@ -68,8 +68,9 @@ async function dishFromModel(ctx: MealDishContext): Promise<{
 export async function resolveMealDishDraft(
   inbound: string,
   priorTexts: readonly string[],
+  options?: { displayName?: string | null },
 ): Promise<MealDishDraft | null> {
-  const ctx = mealDishContext(inbound, priorTexts);
+  const ctx = mealDishContext(inbound, priorTexts, options?.displayName);
   if (!ctx) return null;
 
   if (ctx.dish) {
