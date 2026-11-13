@@ -502,79 +502,130 @@ const pepperAsk = await answerCustomer({
 pepperPrior.push("uova, spaghetti, pecorino, pepe", pepperAsk);
 const pepperSi = await answerCustomer({ question: "si", prior: pepperPrior });
 pepperPrior.push("si", pepperSi);
-const pepperCena = await answerCustomer({ question: "cena", prior: pepperPrior });
-pepperPrior.push("cena", pepperCena);
 const originalFetch = globalThis.fetch;
-let ollamaUrl = "";
-let ollamaSystem = "";
-let ollamaUser = "";
-let ollamaFormat: unknown = "missing";
-const generatedMenu = [
-  "Cena",
-  "Spaghetti conditi solo con uova, pecorino e pepe.",
-  "Nessun altro alimento.",
-].join("\n");
-globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
-  ollamaUrl = String(url);
-  const body = JSON.parse(String(init?.body ?? "{}")) as {
-    format?: unknown;
-    messages?: Array<{ role?: string; content?: string }>;
-  };
-  ollamaFormat = body.format;
-  ollamaSystem = body.messages?.find((item) => item.role === "system")?.content ?? "";
-  ollamaUser = body.messages?.find((item) => item.role === "user")?.content ?? "";
-  return new Response(
-    JSON.stringify({ message: { content: generatedMenu } }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  );
-}) as typeof fetch;
-let pepperDish = "";
+const chefMenu = {
+  menu: [
+    {
+      portata: "antipasto",
+      piatto: null,
+      ingredienti: [],
+      alimento_principale: null,
+      note: "Con questi alimenti non c'è un antipasto.",
+    },
+    {
+      portata: "primo",
+      piatto: "Spaghetti con uova, pecorino e pepe",
+      ingredienti: ["spaghetti", "uova", "pecorino", "pepe"],
+      alimento_principale: "spaghetti",
+      note: "",
+    },
+    {
+      portata: "secondo",
+      piatto: null,
+      ingredienti: [],
+      alimento_principale: null,
+      note: "Manca un secondo.",
+    },
+    {
+      portata: "contorno",
+      piatto: null,
+      ingredienti: [],
+      alimento_principale: null,
+      note: "Manca un contorno.",
+    },
+    {
+      portata: "dolce",
+      piatto: null,
+      ingredienti: [],
+      alimento_principale: null,
+      note: "Manca un dolce.",
+    },
+  ],
+  alimenti_non_usati: [],
+  note: "",
+};
+const badMenu = {
+  ...chefMenu,
+  menu: chefMenu.menu.map((course) =>
+    course.portata === "primo"
+      ? { ...course, ingredienti: [...course.ingredienti, "pomodoro"] }
+      : course,
+  ),
+};
+let calls: Array<{
+  url: string;
+  temperature: unknown;
+  format: unknown;
+  system: string;
+  user: string;
+}> = [];
+function mockChef(contents: string[]) {
+  let n = 0;
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      format?: unknown;
+      options?: { temperature?: unknown };
+      messages?: Array<{ role?: string; content?: string }>;
+    };
+    calls.push({
+      url: String(url),
+      temperature: body.options?.temperature,
+      format: body.format,
+      system: body.messages?.find((item) => item.role === "system")?.content ?? "",
+      user: body.messages?.find((item) => item.role === "user")?.content ?? "",
+    });
+    const content = contents[Math.min(n, contents.length - 1)];
+    n += 1;
+    return new Response(JSON.stringify({ message: { content } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+}
+calls = [];
+mockChef([JSON.stringify(badMenu), JSON.stringify(chefMenu)]);
+let pepperCena = "";
 try {
-  pepperDish = await answerCustomer({ question: "si", prior: pepperPrior });
+  pepperCena = await answerCustomer({ question: "cena", prior: pepperPrior });
 } finally {
   globalThis.fetch = originalFetch;
 }
-assert.equal(ollamaUrl, "http://127.0.0.1:11434/api/chat");
-assert.equal(ollamaFormat, undefined);
-assert.match(ollamaSystem, /solo gli alimenti scritti dalla persona/i);
-assert.match(ollamaSystem, /Non aggiungerne altri/i);
-assert.match(ollamaSystem, /testo completo/i);
-assert.match(ollamaUser, /uova, spaghetti, pecorino e pepe/i);
-assert.match(pepperCena, /Per la cena con uova, spaghetti, pecorino e pepe va bene/i);
-assert.equal(pepperDish, generatedMenu);
-assert.doesNotMatch(pepperDish, /Sono Fiammetta|Perfetto|Sulla tua domanda/);
+assert.equal(calls.length, 2);
+assert.equal(calls[0].url, "http://127.0.0.1:11434/api/chat");
+assert.equal(calls[0].temperature, 0.4);
+assert.equal((calls[0].format as { type?: string }).type, "object");
+assert.match(calls[0].system, /Usa SOLO gli alimenti dati, più sale, pepe, olio e acqua/);
+assert.match(calls[0].system, /antipasto, primo, secondo, contorno, dolce/);
+assert.match(calls[0].system, /piatto è null e note/);
+assert.match(calls[0].system, /al massimo due portate/);
+assert.match(calls[0].system, /Non dedurre allergeni/);
+assert.match(calls[0].system, /alimenti_non_usati/);
+assert.match(calls[0].user, /uova, spaghetti, pecorino e pepe/);
+assert.match(calls[1].user, /Ingrediente non consentito: pomodoro/);
+assert.equal(pepperCena, JSON.stringify(chefMenu, null, 2));
+assert.doesNotMatch(pepperCena, /elenchi gli alimenti|allergen/i);
 
+calls = [];
 globalThis.fetch = (async () => {
   throw new Error("Ollama unreachable at http://127.0.0.1:11434");
 }) as typeof fetch;
 let ollamaDown = "";
 try {
-  ollamaDown = await answerCustomer({ question: "si", prior: pepperPrior });
+  ollamaDown = await answerCustomer({ question: "cena", prior: pepperPrior });
 } finally {
   globalThis.fetch = originalFetch;
 }
 assert.match(ollamaDown, /Ollama non ha scritto il menù/);
 assert.match(ollamaDown, /unreachable/i);
-assert.doesNotMatch(ollamaDown, /preparo|carbonara|spaghetti all'uovo/);
+assert.equal(calls.length, 0);
 
 const menuPrior = [
   "uova, spaghetti, pepe, pecorino",
   "Vuoi che ti prepari il pranzo o la cena?",
-  "cena",
   "Per la cena con uova, spaghetti, pepe e pecorino va bene?",
 ];
-let menuUser = "";
-const writtenMenu = "Menù della cena: spaghetti con uova, pepe e pecorino.";
-globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
-  const body = JSON.parse(String(init?.body ?? "{}")) as {
-    messages?: Array<{ role?: string; content?: string }>;
-  };
-  menuUser = body.messages?.find((item) => item.role === "user")?.content ?? "";
-  return new Response(
-    JSON.stringify({ message: { content: writtenMenu } }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  );
-}) as typeof fetch;
+calls = [];
+mockChef([JSON.stringify(chefMenu)]);
 let menuReply = "";
 try {
   menuReply = await answerCustomer({
@@ -584,44 +635,42 @@ try {
 } finally {
   globalThis.fetch = originalFetch;
 }
-assert.equal(menuReply, writtenMenu);
-assert.match(menuUser, /uova/);
-assert.match(menuUser, /spaghetti/);
-assert.match(menuUser, /pepe/);
-assert.match(menuUser, /pecorino/);
-assert.match(menuUser, /solo questi/i);
+assert.equal(menuReply, JSON.stringify(chefMenu, null, 2));
+assert.match(calls[0].user, /uova/);
+assert.match(calls[0].user, /pepe/);
+assert.match(calls[0].user, /pecorino/);
 assert.doesNotMatch(menuReply, /elenchi gli alimenti/);
 
-const againPrior = [...menuPrior, "OK. Fammi il menù", writtenMenu];
-let againUser = "";
-let againSystem = "";
+const againPrior = [...menuPrior, "OK. Fammi il menù", menuReply];
+calls = [];
 const againAnswer = "Resto sulla cena con uova, spaghetti, pepe e pecorino.";
 globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
   const body = JSON.parse(String(init?.body ?? "{}")) as {
     messages?: Array<{ role?: string; content?: string }>;
   };
-  againSystem = body.messages?.find((item) => item.role === "system")?.content ?? "";
-  againUser = body.messages?.find((item) => item.role === "user")?.content ?? "";
-  return new Response(
-    JSON.stringify({ message: { content: againAnswer } }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  );
+  calls.push({
+    url: String(_url),
+    temperature: undefined,
+    format: undefined,
+    system: body.messages?.find((item) => item.role === "system")?.content ?? "",
+    user: body.messages?.find((item) => item.role === "user")?.content ?? "",
+  });
+  return new Response(JSON.stringify({ message: { content: againAnswer } }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
 }) as typeof fetch;
 let againReply = "";
 try {
-  againReply = await answerCustomer({
-    question: "e dopo?",
-    prior: againPrior,
-  });
+  againReply = await answerCustomer({ question: "e dopo?", prior: againPrior });
 } finally {
   globalThis.fetch = originalFetch;
 }
 assert.equal(againReply, againAnswer);
-assert.match(againSystem, /Non chiedere gli ingredienti/i);
-assert.match(againUser, /Pasto già scelto: la cena/);
-assert.match(againUser, /uova, spaghetti, pepe e pecorino/);
-assert.match(againUser, /Ha già detto sì/);
-assert.match(againUser, /e dopo\?/);
+assert.match(calls[0].system, /Non chiedere gli ingredienti/i);
+assert.match(calls[0].user, /Pasto già scelto: la cena/);
+assert.match(calls[0].user, /uova, spaghetti, pepe e pecorino/);
+assert.match(calls[0].user, /Ha già detto sì/);
 assert.doesNotMatch(againReply, /elenchi gli alimenti/);
 
 console.log("specialist heuristic checks ok");

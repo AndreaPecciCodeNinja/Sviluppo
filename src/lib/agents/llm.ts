@@ -129,20 +129,25 @@ async function callOllama(params: {
   model: string;
   system: string;
   userContent: string;
-  /** `text` leaves the reply as the model wrote it. Default asks for JSON. */
-  format?: "json" | "text";
+  /** `text` leaves the reply as written. An object is a JSON schema. */
+  format?: "json" | "text" | Record<string, unknown>;
+  temperature?: number;
 }): Promise<string> {
   const url = `${params.baseUrl}/api/chat`;
   const payload: Record<string, unknown> = {
     model: params.model,
     stream: false,
-    options: { temperature: 0 },
+    options: { temperature: params.temperature ?? 0 },
     messages: [
       { role: "system", content: params.system },
       { role: "user", content: params.userContent },
     ],
   };
-  if (params.format !== "text") payload.format = "json";
+  if (params.format && typeof params.format === "object") {
+    payload.format = params.format;
+  } else if (params.format !== "text") {
+    payload.format = "json";
+  }
   let response: Response;
   try {
     response = await fetch(url, {
@@ -205,6 +210,9 @@ export async function completeWithOllama(params: {
   userText: string;
   /** When false, Ollama returns the menu as text, not a JSON object. */
   json?: boolean;
+  /** JSON schema sent as Ollama `format`. */
+  schema?: Record<string, unknown>;
+  temperature?: number;
 }): Promise<{ raw: string; model: string; baseUrl: string }> {
   const { baseUrl, model } = getOllamaConfig();
   const raw = await callOllama({
@@ -212,7 +220,8 @@ export async function completeWithOllama(params: {
     model,
     system: params.system,
     userContent: params.userText,
-    format: params.json === false ? "text" : "json",
+    format: params.schema ?? (params.json === false ? "text" : "json"),
+    temperature: params.temperature,
   });
   return { raw, model, baseUrl };
 }
