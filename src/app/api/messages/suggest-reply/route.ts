@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
     text?: string;
     contactKey?: string;
     conversationId?: string;
+    contactDisplayName?: string;
     priorTexts?: unknown;
   };
   try {
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
     const suggestion = await routeInboundMessage(text, {
       contactKey: payload.contactKey,
       conversationId: payload.conversationId,
+      contactDisplayName: payload.contactDisplayName,
       priorTexts,
     });
     return NextResponse.json({ suggestion });

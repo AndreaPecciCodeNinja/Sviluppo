@@ -11,6 +11,7 @@ import {
 import {
   buildDishDraft,
   chosenMeal,
+  customerNameFromDisplay,
   ingredientsFromThread,
   isBareAffirmation,
   mealChoiceFollowUp,
@@ -135,6 +136,31 @@ assert.deepEqual(lunchPlate?.ingredients, [
   "insalata",
 ]);
 assert.equal(mealDishContext("cena alle 20", []), null);
+
+const mixedThread = [
+  "Ciao Andrea, farina, zucchero, cacao, uova",
+  "Hai elencato questi ingredienti: Ciao Andrea, farina, zucchero, cacao, uova.\nVuoi che ti prepari il *pranzo* o la *cena* con questi?",
+  "Carne, pane, pomodori, insalata",
+];
+const current = mealDishContext("Si, preparami il pranzo.", mixedThread, "Tommaso");
+assert.equal(current?.dish, "un panino con carne");
+assert.deepEqual(current?.ingredients, ["Carne", "pane", "pomodori", "insalata"]);
+const currentDraft = buildDishDraft(
+  "pranzo",
+  current?.dish || "",
+  current?.ingredients || [],
+);
+assert.match(currentDraft, /panino con carne/);
+assert.match(currentDraft, /Carne, pane, pomodori e insalata/);
+assert.doesNotMatch(currentDraft, /torta|cacao|Andrea|Ciao|Tommaso/i);
+assert.equal(customerNameFromDisplay("Tommaso Rossi"), "Tommaso Rossi");
+assert.equal(customerNameFromDisplay("Unknown"), null);
+assert.equal(customerNameFromDisplay("+393337802795"), null);
+assert.equal(customerNameFromDisplay(""), null);
+assert.deepEqual(
+  ingredientsFromThread(["Ciao Andrea, uova, farina, zucchero, cacao"]),
+  ["uova", "farina", "zucchero", "cacao"],
+);
 assert.equal(fiammettaRouteLabel("Cibo"), "Fiammetta → Cibo");
 assert.equal(fiammettaRouteLabel("Appuntamenti"), "Fiammetta → Appuntamenti");
 assert.equal(
