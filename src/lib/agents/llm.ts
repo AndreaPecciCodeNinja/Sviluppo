@@ -129,23 +129,26 @@ async function callOllama(params: {
   model: string;
   system: string;
   userContent: string;
+  /** `text` leaves the reply as the model wrote it. Default asks for JSON. */
+  format?: "json" | "text";
 }): Promise<string> {
   const url = `${params.baseUrl}/api/chat`;
+  const payload: Record<string, unknown> = {
+    model: params.model,
+    stream: false,
+    options: { temperature: 0 },
+    messages: [
+      { role: "system", content: params.system },
+      { role: "user", content: params.userContent },
+    ],
+  };
+  if (params.format !== "text") payload.format = "json";
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model: params.model,
-        stream: false,
-        format: "json",
-        options: { temperature: 0 },
-        messages: [
-          { role: "system", content: params.system },
-          { role: "user", content: params.userContent },
-        ],
-      }),
+      body: JSON.stringify(payload),
       cache: "no-store",
       signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
@@ -200,6 +203,8 @@ async function callOllama(params: {
 export async function completeWithOllama(params: {
   system: string;
   userText: string;
+  /** When false, Ollama returns the menu as text, not a JSON object. */
+  json?: boolean;
 }): Promise<{ raw: string; model: string; baseUrl: string }> {
   const { baseUrl, model } = getOllamaConfig();
   const raw = await callOllama({
@@ -207,6 +212,7 @@ export async function completeWithOllama(params: {
     model,
     system: params.system,
     userContent: params.userText,
+    format: params.json === false ? "text" : "json",
   });
   return { raw, model, baseUrl };
 }

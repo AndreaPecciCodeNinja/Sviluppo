@@ -508,21 +508,23 @@ const originalFetch = globalThis.fetch;
 let ollamaUrl = "";
 let ollamaSystem = "";
 let ollamaUser = "";
+let ollamaFormat: unknown = "missing";
+const generatedMenu = [
+  "Cena",
+  "Spaghetti conditi solo con uova, pecorino e pepe.",
+  "Nessun altro alimento.",
+].join("\n");
 globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
   ollamaUrl = String(url);
   const body = JSON.parse(String(init?.body ?? "{}")) as {
+    format?: unknown;
     messages?: Array<{ role?: string; content?: string }>;
   };
+  ollamaFormat = body.format;
   ollamaSystem = body.messages?.find((item) => item.role === "system")?.content ?? "";
   ollamaUser = body.messages?.find((item) => item.role === "user")?.content ?? "";
   return new Response(
-    JSON.stringify({
-      message: {
-        content: JSON.stringify({
-          menu: "Per la cena preparo una carbonara con uova, spaghetti, pecorino e pepe.",
-        }),
-      },
-    }),
+    JSON.stringify({ message: { content: generatedMenu } }),
     { status: 200, headers: { "content-type": "application/json" } },
   );
 }) as typeof fetch;
@@ -533,11 +535,26 @@ try {
   globalThis.fetch = originalFetch;
 }
 assert.equal(ollamaUrl, "http://127.0.0.1:11434/api/chat");
+assert.equal(ollamaFormat, undefined);
 assert.match(ollamaSystem, /solo gli alimenti scritti dalla persona/i);
-assert.match(ollamaSystem, /Non aggiungere peperoni, pomodoro, olio/i);
+assert.match(ollamaSystem, /Non aggiungerne altri/i);
+assert.match(ollamaSystem, /testo completo/i);
 assert.match(ollamaUser, /uova, spaghetti, pecorino e pepe/i);
 assert.match(pepperCena, /Per la cena con uova, spaghetti, pecorino e pepe va bene/i);
-assert.match(pepperDish, /Per la cena preparo una carbonara con uova, spaghetti, pecorino e pepe/);
-assert.doesNotMatch(pepperDish, /Sulla tua domanda|peperoni|pomodoro|\bolio\b/);
+assert.equal(pepperDish, generatedMenu);
+assert.doesNotMatch(pepperDish, /Sono Fiammetta|Perfetto|Sulla tua domanda/);
+
+globalThis.fetch = (async () => {
+  throw new Error("Ollama unreachable at http://127.0.0.1:11434");
+}) as typeof fetch;
+let ollamaDown = "";
+try {
+  ollamaDown = await answerCustomer({ question: "si", prior: pepperPrior });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.match(ollamaDown, /Ollama non ha scritto il menù/);
+assert.match(ollamaDown, /unreachable/i);
+assert.doesNotMatch(ollamaDown, /preparo|carbonara|spaghetti all'uovo/);
 
 console.log("specialist heuristic checks ok");
