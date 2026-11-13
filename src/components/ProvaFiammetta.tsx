@@ -29,9 +29,8 @@ export function ProvaFiammetta() {
       <header className="prova-header">
         <h1>Prova Fiammetta</h1>
         <p className="muted">
-          Due box, niente WhatsApp. Scrivi una domanda e premi Invio: la
-          risposta compare nel box sotto. Questa pagina non seleziona chat e
-          non usa Bird.
+          Due box, niente WhatsApp. Gli alimenti si scrivono qui: premi Invio e
+          la domanda compare nel box risposte. Non serve aprire una chat.
         </p>
       </header>
       <label className="prova-box" htmlFor="prova-domande">

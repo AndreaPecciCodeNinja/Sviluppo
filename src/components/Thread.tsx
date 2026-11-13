@@ -54,9 +54,8 @@ export function Thread({
           {serviceWindowStatus ? ` · CS window: ${serviceWindowStatus}` : ""}
         </p>
         <p className="hint thread-hint">
-          Manuale: la bozza resta nel riquadro e parte solo con Send. Nel box
-          «Simula in chat» scrivi gli alimenti: la domanda pranzo o cena resta
-          nel riquadro, collegata al messaggio aperto, senza WhatsApp.
+          Manuale: la bozza resta nel riquadro e parte solo con Send. Gli alimenti
+          di prova si scrivono su /prova, non in una chat WhatsApp.
         </p>
       </header>
       <div className="thread-messages" role="log" aria-live="polite">
