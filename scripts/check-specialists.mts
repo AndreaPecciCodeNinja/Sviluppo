@@ -24,6 +24,7 @@ import {
   mealFollowUpQuestion,
   MEAL_CHOICE_DRAFT,
 } from "../src/lib/agents/meal-choice.ts";
+import { provaFiammettaReply } from "../src/lib/agents/prova-reply.ts";
 import {
   heuristicIntent,
   matchAppointment,
@@ -398,5 +399,20 @@ assert.deepEqual(
   ]),
   ["Pomodori", "zucchine", "melanzane", "aglio"],
 );
+
+const provaFood = provaFiammettaReply(
+  "Pasta, formaggio, ragù di carne, peperoncino",
+);
+assert.match(provaFood?.draft || "", /Sono Fiammetta/);
+assert.match(provaFood?.draft || "", /pranzo o la cena/);
+assert.doesNotMatch(provaFood?.draft || "", /ti propongo un piatto con|Userò/i);
+const provaCena = provaFiammettaReply("cena", [
+  "Pasta, formaggio, ragù di carne, peperoncino",
+  provaFood?.draft || "",
+]);
+assert.match(provaCena?.draft || "", /per la cena con Pasta, formaggio, ragù di carne e peperoncino va bene/i);
+const provaOther = provaFiammettaReply("ciao");
+assert.match(provaOther?.draft || "", /Sono Fiammetta/);
+assert.equal(provaFiammettaReply("  "), null);
 
 console.log("specialist heuristic checks ok");
