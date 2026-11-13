@@ -28,11 +28,10 @@ import {
 } from "@/lib/food-send-mode";
 import {
   bareMealChoice,
-  buildDishDraft,
+  chosenMeal,
   ingredientMealQuestion,
   isOwnFoodReply,
   mealChoiceFollowUp,
-  mealDishContext,
 } from "@/lib/agents/meal-choice";
 import type {
   BirdConfigStatus,
@@ -85,13 +84,12 @@ const OLLAMA_HEALTH_MS = 15000;
 const AUTO_DRAFT_TEMPLATE_IDS = new Set([
   "food_ingredients_meal",
   "food_meal_choice",
-  "food_dish_proposal",
 ]);
 /**
  * Bump when auto-draft behavior changes so an inbound id already handled by
  * an older bundle is drafted again once (same browser session / HMR).
  */
-const AUTO_DRAFT_VERSION = "food-dish-10";
+const AUTO_DRAFT_VERSION = "food-question-1";
 const SUGGEST_TIMEOUT_MS = 25_000;
 const OLLAMA_TIMEOUT_MESSAGE =
   "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
@@ -466,10 +464,16 @@ export function ChatApp() {
 
   async function handleSelectMessage(message: ChatMessage) {
     if (message.direction !== "inbound") return;
-    // Manual select is an override: do not auto-re-run for this id.
     autoHandledInboundIdRef.current = autoHandleKey(message.id);
     suggestGenerationRef.current += 1;
     suggestInFlightRef.current = false;
+    const inbound = inboundComposerText(message);
+    const localDraft = inbound ? foodLocalDraft(inbound, message) : null;
+    if (localDraft) {
+      setSelectedMessage(message);
+      showFoodLocalDraft(localDraft, "manual", shortPreview(inbound), message.id);
+      return;
+    }
     await prepareInboundSelection(message);
   }
 
@@ -494,8 +498,6 @@ export function ChatApp() {
       .map((message) => message.text.trim())
       .filter(Boolean)
       .slice(-40);
-    const mealAsk = mealChoiceFollowUp(text, priorTexts);
-    const dishCtx = mealDishContext(text, priorTexts, selected?.displayName);
     const listed = ingredientMealQuestion(text);
     if (listed) {
       return {
@@ -504,6 +506,7 @@ export function ChatApp() {
         summary: "lista ingredienti",
       };
     }
+    const mealAsk = mealChoiceFollowUp(text, priorTexts);
     if (mealAsk) {
       return {
         draft: withFiammettaIntro(mealAsk),
@@ -511,14 +514,7 @@ export function ChatApp() {
         summary: "scelta pranzo o cena",
       };
     }
-    if (!dishCtx?.dish) return null;
-    return {
-      draft: withFiammettaIntro(
-        buildDishDraft(dishCtx.meal, dishCtx.dish, dishCtx.ingredients),
-      ),
-      label: "Proposta piatto",
-      summary: `${dishCtx.meal} · ${dishCtx.dish}`,
-    };
+    return null;
   }
 
   function rememberSentText(text: string) {
@@ -843,6 +839,10 @@ export function ChatApp() {
       );
       return;
     }
+    if (inbound && (bareMealChoice(inbound) || chosenMeal(inbound))) {
+      setSelectedMessage(message);
+      return;
+    }
 
     const text = await prepareInboundSelection(message);
     if (generation !== suggestGenerationRef.current) return;
@@ -872,12 +872,7 @@ export function ChatApp() {
 
     const latest = findLatestInbound(messages);
     if (!latest) return;
-    const handleKey = autoHandleKey(latest.id);
-    if (autoHandledInboundIdRef.current === handleKey) {
-      const meal = bareMealChoice(inboundComposerText(latest) || latest.text);
-      if (!meal || draft.trim()) return;
-      autoHandledInboundIdRef.current = null;
-    }
+    if (autoHandledInboundIdRef.current === autoHandleKey(latest.id)) return;
 
     void runAutoDraft(latest);
     // Intentionally omit runAutoDraft from deps — stable closure via refs/state above.
