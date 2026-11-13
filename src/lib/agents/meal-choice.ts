@@ -93,39 +93,6 @@ export function mealChoiceFollowUp(
   return MEAL_CHOICE_DRAFT;
 }
 
-const MEAL_FILLER = new Set([
-  "per",
-  "la",
-  "il",
-  "lo",
-  "l",
-  "a",
-  "al",
-  "alla",
-  "vorrei",
-  "voglio",
-  "facciamo",
-  "grazie",
-  "si",
-  "sì",
-  "ok",
-  "okay",
-  "pure",
-  "allora",
-  "va",
-  "bene",
-  "una",
-  "un",
-  "di",
-  "da",
-  "che",
-  "sia",
-  "anche",
-  "solo",
-  "proprio",
-  "magari",
-]);
-
 export type MealName = "pranzo" | "cena";
 
 export type MealDishContext = {
@@ -142,23 +109,13 @@ function mealHits(text: string): MealName[] {
 }
 
 /**
- * The inbound picks exactly one meal. Extra words are allowed only when they
- * are filler ("per la cena") or an ingredient list in the same message.
+ * The inbound names exactly one meal, including phrases such as
+ * "preparami il pranzo". Both meals in one text is not a choice.
  */
 export function chosenMeal(text: string): MealName | null {
   const hits = [...new Set(mealHits(text))];
   if (hits.length !== 1) return null;
-  const stripped = text.replace(
-    /(?<![\p{L}\p{N}])(pranzo|cena)(?![\p{L}\p{N}])/giu,
-    " ",
-  );
-  const leftovers = stripped
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .split(/\s+/)
-    .filter((word) => word && !MEAL_FILLER.has(word.toLowerCase()));
-  if (leftovers.length === 0) return hits[0];
-  if (looksLikeIngredientList(stripped)) return hits[0];
-  return null;
+  return hits[0];
 }
 
 function splitItems(text: string): string[] {
@@ -205,7 +162,7 @@ export function joinItalian(items: readonly string[]): string {
   return `${items.slice(0, -1).join(", ")} e ${items[items.length - 1]}`;
 }
 
-/** A few obvious home dishes. Anything else is left to the model. */
+/** A few obvious home dishes. Unknown lists still get a plate, not another question. */
 export function heuristicDish(ingredients: readonly string[]): string | null {
   const blob = ingredients.join(" ");
   if (
@@ -215,7 +172,14 @@ export function heuristicDish(ingredients: readonly string[]): string | null {
   ) {
     return "una torta al cacao";
   }
+  if (/carne/iu.test(blob) && /pane/iu.test(blob)) {
+    return "un panino con carne";
+  }
   return null;
+}
+
+export function proposedDishName(ingredients: readonly string[]): string {
+  return heuristicDish(ingredients) ?? `un piatto con ${joinItalian(ingredients)}`;
 }
 
 export function mealDishContext(
@@ -230,7 +194,7 @@ export function mealDishContext(
   );
   const ingredients = ingredientsFromThread([...priorTexts, stripped]);
   if (ingredients.length < 2) return null;
-  return { meal, ingredients, dish: heuristicDish(ingredients) };
+  return { meal, ingredients, dish: proposedDishName(ingredients) };
 }
 
 export function buildDishDraft(

@@ -118,16 +118,30 @@ assert.match(
 );
 assert.doesNotMatch(cacaoDish.draft, /Vuoi che ti prepari|pranzo o la cena/i);
 
+const callsBeforeLunch = providerCalls;
+const lunchDish = await routeInboundMessage("Si, preparami il pranzo.", {
+  priorTexts: ["carne, pane, pomodori, insalata"],
+});
+assert.equal(providerCalls, callsBeforeLunch);
+assert.equal(lunchDish.templateId, "food_dish_proposal");
+assert.equal(lunchDish.autoEligible, true);
+assert.match(
+  lunchDish.draft,
+  /^Sono Fiammetta\. Per il pranzo ti propongo un panino con carne/,
+);
+assert.match(lunchDish.draft, /carne, pane, pomodori e insalata/);
+assert.doesNotMatch(lunchDish.draft, /Vuoi che ti prepari|pranzo o la cena/i);
+
 const otherDish = await routeInboundMessage("pranzo", {
   priorTexts: ["pollo, riso, zucchine"],
 });
 assert.equal(otherDish.templateId, "food_dish_proposal");
 assert.match(
   otherDish.draft,
-  /^Sono Fiammetta\. Per il pranzo ti propongo un risotto/,
+  /^Sono Fiammetta\. Per il pranzo ti propongo un piatto con pollo, riso e zucchine/,
 );
 assert.doesNotMatch(otherDish.draft, /Vuoi che ti prepari/i);
-assert.ok(providerCalls > callsBeforeDish);
+assert.equal(providerCalls, callsBeforeLunch);
 
 process.env.SPECIALIST_APPOINTMENTS = "0";
 const disabled = await routeInboundMessage(
