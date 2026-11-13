@@ -188,6 +188,11 @@ export function ChatApp() {
   const [chainTick, setChainTick] = useState(0);
   /** Survives inbox polls, which clear the generic load error. */
   const [sendError, setSendError] = useState<string | null>(null);
+  /** Text typed in the chat box, tied to an open-conversation message. Never sent. */
+  const [simulatedByMessage, setSimulatedByMessage] = useState<
+    Record<string, string>
+  >({});
+  const [simulateInput, setSimulateInput] = useState("");
 
   /** `${version}:${messageId}` already auto-drafted — avoid poll loops. */
   const autoHandledInboundIdRef = useRef<string | null>(null);
@@ -375,6 +380,8 @@ export function ChatApp() {
       setMessages([]);
     }
     setSelectedMessage(null);
+    setSimulatedByMessage({});
+    setSimulateInput("");
     programmaticDraftRef.current = null;
     setDraft("");
     setTranscribing(false);
@@ -495,7 +502,8 @@ export function ChatApp() {
     autoHandledInboundIdRef.current = autoHandleKey(message.id);
     suggestGenerationRef.current += 1;
     suggestInFlightRef.current = false;
-    const inbound = inboundComposerText(message);
+    const simulated = simulatedByMessage[message.id];
+    const inbound = simulated || inboundComposerText(message);
     const localDraft = inbound ? foodLocalDraft(inbound, message) : null;
     if (localDraft) {
       setSelectedMessage(message);
@@ -504,11 +512,63 @@ export function ChatApp() {
         "manual",
         shortPreview(inbound),
         message.id,
-        sendModeRef.current === "automatic",
+        simulated ? false : sendModeRef.current === "automatic",
       );
+      if (simulated) {
+        setSuggestionMeta(
+          `Simula in chat · collegato a “${shortPreview(inboundComposerText(message))}” · non inviato`,
+        );
+      }
       return;
     }
     await prepareInboundSelection(message);
+  }
+
+  function readSimulatedIngredients() {
+    const text = simulateInput.trim();
+    if (!text) return;
+    const anchor =
+      selectedMessage?.direction === "inbound"
+        ? selectedMessage
+        : findLatestInbound(messages);
+    if (!anchor) {
+      setError(
+        "Apri una conversazione con un messaggio, poi scrivi gli alimenti nel box.",
+      );
+      return;
+    }
+    const listed = ingredientMealQuestion(text);
+    if (!listed) {
+      setError("In questo passo il box legge una lista di alimenti.");
+      return;
+    }
+    setSimulatedByMessage((prev) => ({ ...prev, [anchor.id]: text }));
+    pinnedSelectionIdRef.current = anchor.id;
+    inboundIdsAtSelectionRef.current = new Set(
+      messages
+        .filter((item) => item.direction === "inbound")
+        .map((item) => item.id),
+    );
+    autoHandledInboundIdRef.current = autoHandleKey(anchor.id);
+    suggestGenerationRef.current += 1;
+    suggestInFlightRef.current = false;
+    setSelectedMessage(anchor);
+    showFoodLocalDraft(
+      {
+        draft: withFiammettaIntro(listed),
+        label: "Pranzo o cena con ingredienti",
+        summary: "lista ingredienti",
+      },
+      "manual",
+      shortPreview(text),
+      anchor.id,
+      false,
+    );
+    setSuggestionMeta(
+      `Simula in chat · collegato a “${shortPreview(inboundComposerText(anchor))}” · non inviato`,
+    );
+    setError(null);
+    setSendError(null);
   }
 
   function applyComposerDraft(next: string) {
@@ -1192,6 +1252,31 @@ export function ChatApp() {
             void handleSelectMessage(m);
           }}
         />
+        <div className="simulate-box">
+          <label className="simulate-box-label" htmlFor="simulate-ingredients">
+            Simula in chat
+          </label>
+          <p className="muted simulate-box-hint">
+            Scrivi gli alimenti. Fiammetta fa la domanda nel riquadro e collega
+            il testo al messaggio aperto. Non parte su WhatsApp.
+          </p>
+          <textarea
+            id="simulate-ingredients"
+            rows={2}
+            value={simulateInput}
+            placeholder="Pasta, formaggio, ragù di carne, peperoncino"
+            disabled={!selectedId || sending}
+            onChange={(event) => setSimulateInput(event.target.value)}
+          />
+          <button
+            type="button"
+            className="simulate-yes"
+            disabled={!selectedId || sending || !simulateInput.trim()}
+            onClick={readSimulatedIngredients}
+          >
+            Leggi alimenti
+          </button>
+        </div>
         {sendError || error ? (
           <p className="banner-error" role="alert">
             {sendError || error}

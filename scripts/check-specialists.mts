@@ -188,6 +188,11 @@ assert.doesNotMatch(
   /Userò latte, uova, zucchine e salsiccia|torta|carne|Andrea|Vuoi che ti prepari/i,
 );
 assert.equal(ingredientMealQuestion("ciao"), null);
+const pastaAsk = ingredientMealQuestion(
+  "Pasta, formaggio, ragù di carne, peperoncino",
+);
+assert.match(pastaAsk || "", /Vuoi che ti prepari il pranzo o la cena/);
+assert.doesNotMatch(pastaAsk || "", /ti propongo|Userò|Preparo la cena con/i);
 
 const mixedThread = [
   "Ciao Andrea, farina, zucchero, cacao, uova",
