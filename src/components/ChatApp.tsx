@@ -13,6 +13,7 @@ import { Thread } from "./Thread";
 import { fiammettaRouteLabel, withFiammettaIntro } from "@/lib/agents/fiammetta";
 import {
   buildDishDraft,
+  ingredientMealQuestion,
   mealChoiceFollowUp,
   mealDishContext,
 } from "@/lib/agents/meal-choice";
@@ -21,6 +22,41 @@ import type {
   ChatMessage,
   Conversation,
 } from "@/lib/types";
+
+const SEEN_INBOX_KEY = "inbox-seen-message-at";
+
+function readSeenInbox(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SEEN_INBOX_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return {};
+    const seen: Record<string, string> = {};
+    for (const [id, at] of Object.entries(parsed)) {
+      if (typeof at === "string" && at) seen[id] = at;
+    }
+    return seen;
+  } catch {
+    return {};
+  }
+}
+
+/** Dot only when a message arrived after the chat was last opened. */
+function hasUnseenMessage(
+  conversation: Conversation,
+  seenAt: Readonly<Record<string, string>>,
+  openId: string | null,
+): boolean {
+  if (conversation.id === openId) return false;
+  const openedAt = seenAt[conversation.id];
+  if (openedAt) {
+    const latest = Date.parse(conversation.lastMessageAt);
+    const seen = Date.parse(openedAt);
+    return Number.isFinite(latest) && Number.isFinite(seen) && latest > seen;
+  }
+  return conversation.unreadCount > 0;
+}
 
 const POLL_MS = Number(process.env.NEXT_PUBLIC_POLL_INTERVAL_MS || 3000);
 const INTERVAL =
@@ -38,7 +74,7 @@ const AUTO_DRAFT_TEMPLATE_IDS = new Set([
  * Bump when auto-draft behavior changes so an inbound id already handled by
  * an older bundle is drafted again once (same browser session / HMR).
  */
-const AUTO_DRAFT_VERSION = "food-dish-5";
+const AUTO_DRAFT_VERSION = "food-dish-6";
 const SUGGEST_TIMEOUT_MS = 25_000;
 const OLLAMA_TIMEOUT_MESSAGE =
   "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
@@ -103,9 +139,6 @@ export function ChatApp() {
   );
   const [transcribing, setTranscribing] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
-  const [suggestSource, setSuggestSource] = useState<"auto" | "manual" | null>(
-    null,
-  );
   const [suggestionMeta, setSuggestionMeta] = useState<string | null>(null);
   const [routeBadge, setRouteBadge] = useState<{
     label: string;
@@ -117,6 +150,8 @@ export function ChatApp() {
   const [ollamaChecking, setOllamaChecking] = useState(false);
   /** Bumps when the inbox conversation is opened, including a re-click. */
   const [composerEpoch, setComposerEpoch] = useState(0);
+  /** lastMessageAt already opened, so the inbox dot stays off until a newer message. */
+  const [seenInboxAt, setSeenInboxAt] = useState<Record<string, string>>({});
 
   /** `${version}:${messageId}` already auto-drafted — avoid poll loops. */
   const autoHandledInboundIdRef = useRef<string | null>(null);
@@ -218,6 +253,25 @@ export function ChatApp() {
   }, []);
 
   useEffect(() => {
+    setSeenInboxAt(readSeenInbox());
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId || !selected?.lastMessageAt) return;
+    const at = selected.lastMessageAt;
+    setSeenInboxAt((prev) => {
+      if (prev[selectedId] === at) return prev;
+      const next = { ...prev, [selectedId]: at };
+      try {
+        window.localStorage.setItem(SEEN_INBOX_KEY, JSON.stringify(next));
+      } catch {
+        /* the dot still clears for this page load */
+      }
+      return next;
+    });
+  }, [selectedId, selected?.lastMessageAt]);
+
+  useEffect(() => {
     void loadStatus();
   }, [loadStatus]);
 
@@ -253,7 +307,6 @@ export function ChatApp() {
     setDraft("");
     setTranscribing(false);
     setSuggesting(false);
-    setSuggestSource(null);
     setSuggestionMeta(null);
     setRouteBadge(null);
   }, [status?.configured, selectedId, loadMessages]);
@@ -389,6 +442,14 @@ export function ChatApp() {
       .slice(-40);
     const mealAsk = mealChoiceFollowUp(text, priorTexts);
     const dishCtx = mealDishContext(text, priorTexts, selected?.displayName);
+    const listed = ingredientMealQuestion(text);
+    if (listed) {
+      return {
+        draft: withFiammettaIntro(listed),
+        label: "Pranzo o cena con ingredienti",
+        summary: "lista ingredienti",
+      };
+    }
     if (mealAsk) {
       return {
         draft: withFiammettaIntro(mealAsk),
@@ -427,7 +488,6 @@ export function ChatApp() {
     );
     setError(null);
     setSuggesting(false);
-    setSuggestSource(null);
   }
 
   async function runSuggestReply(params: {
@@ -462,8 +522,9 @@ export function ChatApp() {
 
     suggestInFlightRef.current = true;
     setSuggesting(true);
-    setSuggestSource(params.source);
     setError(null);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), SUGGEST_TIMEOUT_MS);
     try {
       const health = await loadOllamaHealth();
       if (params.generation !== suggestGenerationRef.current) return;
@@ -481,7 +542,7 @@ export function ChatApp() {
           contactDisplayName: selected?.displayName,
           priorTexts,
         }),
-        signal: AbortSignal.timeout(SUGGEST_TIMEOUT_MS),
+        signal: controller.signal,
       });
       const data = (await res.json()) as {
         suggestion?: {
@@ -580,10 +641,10 @@ export function ChatApp() {
             : "Suggest reply failed",
       );
     } finally {
+      window.clearTimeout(timer);
       if (params.generation === suggestGenerationRef.current) {
         suggestInFlightRef.current = false;
         setSuggesting(false);
-        setSuggestSource(null);
       }
       void loadOllamaHealth();
     }
@@ -643,7 +704,6 @@ export function ChatApp() {
       suggestGenerationRef.current += 1;
       suggestInFlightRef.current = false;
       setSuggesting(false);
-      setSuggestSource(null);
     }
     if (!versionChanged && (suggesting || transcribing || sending)) return;
     if (transcribing || sending) return;
@@ -749,12 +809,16 @@ export function ChatApp() {
       : "testo"
     : null;
 
+  const generatingLabel =
+    ollamaHealth?.provider === "claude"
+      ? "Fiammetta sta generando…"
+      : ollamaHealth?.provider === "openai"
+        ? "Fiammetta sta generando… OpenAI sta scrivendo"
+        : "Fiammetta sta generando… Ollama sta scrivendo";
   const statusLabel = transcribing
     ? "Trascrizione…"
     : suggesting
-      ? suggestSource === "auto"
-        ? "Fiammetta · bozza automatica…"
-        : "Fiammetta sta affidando lo specialista…"
+      ? generatingLabel
       : null;
 
   return (
@@ -772,6 +836,15 @@ export function ChatApp() {
         <Inbox
           conversations={conversations}
           selectedId={selectedId}
+          unseenIds={
+            new Set(
+              conversations
+                .filter((conversation) =>
+                  hasUnseenMessage(conversation, seenInboxAt, selectedId),
+                )
+                .map((conversation) => conversation.id),
+            )
+          }
           onSelect={(id) => {
             autoHandledInboundIdRef.current = null;
             programmaticDraftRef.current = null;
@@ -835,7 +908,6 @@ export function ChatApp() {
             setDraft("");
             setTranscribing(false);
             setSuggesting(false);
-            setSuggestSource(null);
             setSuggestionMeta(null);
             setRouteBadge(null);
           }}

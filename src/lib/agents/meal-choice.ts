@@ -164,11 +164,32 @@ export function customerNameFromDisplay(
   return name;
 }
 
+function cleanIngredientPhrase(part: string): string {
+  let text = part.replace(/\s+/g, " ").trim();
+  text = text.replace(
+    /^(?:mi\s+servirebbero|mi\s+servirebbe|mi\s+servono|vorrei|voglio|ho\s+bisogno\s+di|servirebbero|servono|serve)\s+/iu,
+    "",
+  );
+  let previous = "";
+  while (text && previous !== text) {
+    previous = text;
+    text = text
+      .replace(
+        /^(?:del|dello|della|dei|degli|delle|di|un|uno|una|il|lo|la|i|gli|le|due|tre|quattro|cinque|sei|qualche)\s+/iu,
+        "",
+      )
+      .trim();
+  }
+  return text;
+}
+
 function splitItems(text: string): string[] {
   return stripLeadingGreeting(text)
     .replace(/\*([^*]+)\*/g, "$1")
     .split(/[,;\n•]+|\s+e\s+/iu)
-    .map((part) => part.replace(/^[\s:.-]+|[\s.?!]+$/g, "").trim())
+    .map((part) =>
+      cleanIngredientPhrase(part.replace(/^[\s:.-]+|[\s.?!]+$/g, "").trim()),
+    )
     .filter(
       (part) =>
         part.length > 1 &&
@@ -179,6 +200,17 @@ function splitItems(text: string): string[] {
           part,
         ),
     );
+}
+
+/**
+ * Ingredient list that does not name pranzo or cena.
+ * The meal question is known: no model call.
+ */
+export function ingredientMealQuestion(text: string): string | null {
+  if (mentionsMeal(text) || !looksLikeIngredientList(text)) return null;
+  const items = splitItems(text);
+  if (items.length < 2) return null;
+  return `Hai elencato questi ingredienti: ${items.join(", ")}.\nVuoi che ti prepari il pranzo o la cena con questi?`;
 }
 
 function withoutContactName(

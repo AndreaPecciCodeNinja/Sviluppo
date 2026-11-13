@@ -75,13 +75,30 @@ assert.match(appointment.draft, /15:00/);
 assert.match(appointment.draft, /Confermi\?/);
 assert.equal(appointment.intent, "appointment");
 
+const callsBeforeList = providerCalls;
 const food = await routeInboundMessage("pomodori, mozzarella, basilico, olio");
+assert.equal(providerCalls, callsBeforeList);
+assert.equal(food.model, "heuristic");
 assert.equal(food.specialistId, "food");
 assert.equal(food.routeLabel, "Fiammetta → Cibo");
 assert.match(food.draft, /^Sono Fiammetta\. /);
 assert.equal(food.autoEligible, true);
 assert.match(food.draft, /pomodori, mozzarella, basilico, olio/);
 assert.match(food.draft, /pranzo/i);
+
+const callsBeforeGrocery = providerCalls;
+const grocery = await routeInboundMessage(
+  "Mi servirebbe del latte, delle uova, due zucchine e una salsiccia",
+);
+assert.equal(providerCalls, callsBeforeGrocery);
+assert.equal(grocery.templateId, "food_ingredients_meal");
+assert.equal(grocery.autoEligible, true);
+assert.match(
+  grocery.draft,
+  /^Sono Fiammetta\. Hai elencato questi ingredienti: latte, uova, zucchine, salsiccia/,
+);
+assert.match(grocery.draft, /pranzo o la cena/i);
+assert.doesNotMatch(grocery.draft, /Mi servirebbe|Andrea/);
 
 const generic = await routeInboundMessage("ciao, grazie");
 assert.equal(generic.specialistId, "generic");

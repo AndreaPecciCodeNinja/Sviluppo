@@ -5,6 +5,8 @@ import type { Conversation } from "@/lib/types";
 type InboxProps = {
   conversations: Conversation[];
   selectedId: string | null;
+  /** Conversations with a new message the operator has not opened yet. */
+  unseenIds?: ReadonlySet<string>;
   onSelect: (id: string) => void;
 };
 
@@ -19,7 +21,12 @@ function formatTime(iso: string): string {
   });
 }
 
-export function Inbox({ conversations, selectedId, onSelect }: InboxProps) {
+export function Inbox({
+  conversations,
+  selectedId,
+  unseenIds,
+  onSelect,
+}: InboxProps) {
   if (conversations.length === 0) {
     return (
       <div className="inbox empty">
@@ -57,10 +64,13 @@ export function Inbox({ conversations, selectedId, onSelect }: InboxProps) {
                     ? ` · window ${c.serviceWindowStatus}`
                     : ""}
                 </span>
-                {c.unreadCount > 0 ? (
-                  <span className="badge" aria-label={`${c.unreadCount} unread`}>
-                    {c.unreadCount}
-                  </span>
+                {unseenIds?.has(c.id) ? (
+                  <span
+                    className="badge badge-new"
+                    role="status"
+                    aria-label="Nuovo messaggio"
+                    title="Nuovo messaggio"
+                  />
                 ) : null}
               </div>
             </button>

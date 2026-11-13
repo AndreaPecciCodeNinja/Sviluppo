@@ -172,6 +172,14 @@ code,
   padding: 0 0.35rem;
 }
 
+.badge-new {
+  min-width: 0.7rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
 .thread-pane {
   background:
     radial-gradient(ellipse at top right, #1a2a24 0%, transparent 45%),
