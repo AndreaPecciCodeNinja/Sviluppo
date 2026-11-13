@@ -5,8 +5,12 @@ import {
   normalizeTime,
 } from "../src/lib/agents/appointment-draft.ts";
 import {
+  buildDishDraft,
+  chosenMeal,
+  ingredientsFromThread,
   isBareAffirmation,
   mealChoiceFollowUp,
+  mealDishContext,
   MEAL_CHOICE_DRAFT,
 } from "../src/lib/agents/meal-choice.ts";
 import {
@@ -89,5 +93,29 @@ assert.equal(mealChoiceFollowUp("va bene", ["ciao"]), null);
 assert.equal(mealChoiceFollowUp("pranzo", ingredients), null);
 assert.equal(mealChoiceFollowUp("sì, cena", question), null);
 assert.equal(mealChoiceFollowUp("grazie", ingredients), null);
+
+const cacao = ["uova, farina, zucchero, cacao"];
+const questionAndList = [
+  ...cacao,
+  "Hai elencato questi ingredienti: uova, farina, zucchero, cacao.\nVuoi che ti prepari il *pranzo* o la *cena* con questi?",
+];
+assert.equal(chosenMeal("Cena"), "cena");
+assert.equal(chosenMeal("per il pranzo"), "pranzo");
+assert.equal(chosenMeal("cena alle 20"), null);
+const dish = mealDishContext("Cena", questionAndList);
+assert.ok(dish);
+assert.equal(dish?.meal, "cena");
+assert.equal(dish?.dish, "una torta al cacao");
+assert.deepEqual(ingredientsFromThread(questionAndList), [
+  "uova",
+  "farina",
+  "zucchero",
+  "cacao",
+]);
+const draft = buildDishDraft("cena", dish?.dish || "", dish?.ingredients || []);
+assert.match(draft, /Per la cena ti propongo una torta al cacao/);
+assert.match(draft, /uova, farina, zucchero e cacao/);
+assert.doesNotMatch(draft, /Vuoi che ti prepari|pranzo o la cena/i);
+assert.equal(mealDishContext("sì", cacao), null);
 
 console.log("specialist heuristic checks ok");

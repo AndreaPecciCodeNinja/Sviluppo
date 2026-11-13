@@ -1,4 +1,5 @@
 import { completeWithReplyProvider, extractJsonObject } from "./agents/llm";
+import { chosenMeal } from "./agents/meal-choice";
 import {
   getReplyTemplate,
   listReplyTemplates,
@@ -79,6 +80,24 @@ function renderChoice(
   for (const slot of template.slots) {
     const value = choice.slots?.[slot.name];
     slots[slot.name] = typeof value === "string" ? value.trim() : "";
+  }
+
+  if (template.id === "food_ingredients_meal" && chosenMeal(inboundText)) {
+    const generic = getReplyTemplate("generic_ack");
+    if (generic) {
+      return {
+        draft: renderTemplate(generic, {}).trim(),
+        templateId: generic.id,
+        templateLabel: generic.label,
+        slots: {},
+        rationale:
+          choice.rationale?.trim() ||
+          "Il pasto è già scelto: non ripetere la domanda pranzo/cena",
+        intentSummary: choice.intent_summary?.trim() || "",
+        model,
+        provider,
+      };
+    }
   }
 
   if (

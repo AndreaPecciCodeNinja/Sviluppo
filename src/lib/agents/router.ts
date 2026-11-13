@@ -1,5 +1,6 @@
 import { extractJsonObject, completeWithReplyProvider } from "./llm";
 import { mealChoiceFollowUp } from "./meal-choice";
+import { resolveMealDishDraft } from "./meal-dish";
 import { heuristicIntent } from "./match";
 import { getReplyProvider } from "../reply-provider";
 import {
@@ -159,6 +160,29 @@ export async function routeInboundMessage(
         templateLabel: "Scelta pranzo o cena",
         model: "heuristic",
         provider: getReplyProvider(),
+      };
+    }
+
+    const dish = await resolveMealDishDraft(text, priorTexts);
+    if (dish) {
+      return {
+        draft: dish.draft,
+        autoEligible: true,
+        specialistId: "food",
+        specialistLabel: food.label,
+        routeLabel: `Router → ${food.label}`,
+        intent: "food_meal",
+        rationale: `Pasto scelto (${dish.meal}): propongo il piatto, senza rifare la domanda`,
+        intentSummary: `${dish.meal} · ${dish.dish}`,
+        slots: {
+          meal: dish.meal,
+          dish: dish.dish,
+          ingredients: dish.ingredients.join(", "),
+        },
+        templateId: "food_dish_proposal",
+        templateLabel: "Proposta piatto",
+        model: dish.model,
+        provider: dish.provider,
       };
     }
   }
