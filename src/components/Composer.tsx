@@ -8,7 +8,10 @@ type ComposerProps = {
   suggesting?: boolean;
   windowClosed?: boolean;
   text: string;
+  /** Changes when the conversation opens so the browser does not restore an old draft. */
+  fieldName?: string;
   onTextChange: (value: string) => void;
+  onFocus?: () => void;
   selectedLabel?: string | null;
   statusLabel?: string | null;
   suggestionMeta?: string | null;
@@ -25,7 +28,9 @@ export function Composer({
   suggesting,
   windowClosed,
   text,
+  fieldName,
   onTextChange,
+  onFocus,
   selectedLabel,
   statusLabel,
   suggestionMeta,
@@ -112,9 +117,12 @@ export function Composer({
       ) : null}
       <textarea
         id="composer-input"
+        name={fieldName || "composer-reply"}
         rows={4}
         value={text}
+        autoComplete="off"
         onChange={(e) => onTextChange(e.target.value)}
+        onFocus={onFocus}
         placeholder={placeholder}
         disabled={disabled || sending || busy}
         onKeyDown={(e) => {

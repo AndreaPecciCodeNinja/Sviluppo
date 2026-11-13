@@ -38,7 +38,7 @@ const AUTO_DRAFT_TEMPLATE_IDS = new Set([
  * Bump when auto-draft behavior changes so an inbound id already handled by
  * an older bundle is drafted again once (same browser session / HMR).
  */
-const AUTO_DRAFT_VERSION = "food-dish-4";
+const AUTO_DRAFT_VERSION = "food-dish-5";
 const SUGGEST_TIMEOUT_MS = 25_000;
 const OLLAMA_TIMEOUT_MESSAGE =
   "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
@@ -115,9 +115,16 @@ export function ChatApp() {
     null,
   );
   const [ollamaChecking, setOllamaChecking] = useState(false);
+  /** Bumps when the inbox conversation is opened, including a re-click. */
+  const [composerEpoch, setComposerEpoch] = useState(0);
 
   /** `${version}:${messageId}` already auto-drafted — avoid poll loops. */
   const autoHandledInboundIdRef = useRef<string | null>(null);
+  /**
+   * Draft just written by auto-open. Ignore a browser restore of the previous
+   * textarea value until the operator focuses the box.
+   */
+  const programmaticDraftRef = useRef<string | null>(null);
   /** Which auto-draft rules already reset the handled ids in this session. */
   const autoDraftVersionRef = useRef<string | null>(null);
   /** Bumped on conversation change / clear so stale async work is ignored. */
@@ -242,6 +249,7 @@ export function ChatApp() {
       setMessages([]);
     }
     setSelectedMessage(null);
+    programmaticDraftRef.current = null;
     setDraft("");
     setTranscribing(false);
     setSuggesting(false);
@@ -359,6 +367,69 @@ export function ChatApp() {
     await prepareInboundSelection(message);
   }
 
+  function applyComposerDraft(next: string) {
+    programmaticDraftRef.current = next;
+    setDraft(next);
+  }
+
+  function foodLocalDraft(
+    text: string,
+    sourceMessage?: ChatMessage | null,
+  ): {
+    draft: string;
+    label: string;
+    summary: string;
+  } | null {
+    const priorTexts = messages
+      .filter(
+        (message) => !sourceMessage || message.id !== sourceMessage.id,
+      )
+      .map((message) => message.text.trim())
+      .filter(Boolean)
+      .slice(-40);
+    const mealAsk = mealChoiceFollowUp(text, priorTexts);
+    const dishCtx = mealDishContext(text, priorTexts, selected?.displayName);
+    if (mealAsk) {
+      return {
+        draft: withFiammettaIntro(mealAsk),
+        label: "Scelta pranzo o cena",
+        summary: "scelta pranzo o cena",
+      };
+    }
+    if (!dishCtx?.dish) return null;
+    return {
+      draft: withFiammettaIntro(
+        buildDishDraft(dishCtx.meal, dishCtx.dish, dishCtx.ingredients),
+      ),
+      label: "Proposta piatto",
+      summary: `${dishCtx.meal} · ${dishCtx.dish}`,
+    };
+  }
+
+  function showFoodLocalDraft(
+    localDraft: { draft: string; label: string; summary: string },
+    source: "auto" | "manual",
+    preview: string,
+  ) {
+    const foodBadge = fiammettaRouteLabel("Cibo");
+    applyComposerDraft(localDraft.draft);
+    setRouteBadge({ label: foodBadge, specialistId: "food" });
+    setSuggestionMeta(
+      [
+        source === "auto" ? "Bozza automatica" : null,
+        foodBadge,
+        preview ? `msg “${preview}”` : null,
+        localDraft.label,
+        localDraft.summary,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
+    setError(null);
+    setSuggesting(false);
+    setSuggestSource(null);
+  }
+
   async function runSuggestReply(params: {
     text: string;
     source: "auto" | "manual";
@@ -369,6 +440,17 @@ export function ChatApp() {
     if (!text || transcribing) return;
     if (suggestInFlightRef.current) return;
 
+    const localDraft = foodLocalDraft(text, params.sourceMessage);
+    if (localDraft) {
+      const preview = shortPreview(
+        params.sourceMessage
+          ? inboundComposerText(params.sourceMessage) || text
+          : text,
+      );
+      showFoodLocalDraft(localDraft, params.source, preview);
+      return;
+    }
+
     const priorTexts = messages
       .filter(
         (message) =>
@@ -377,48 +459,6 @@ export function ChatApp() {
       .map((message) => message.text.trim())
       .filter(Boolean)
       .slice(-40);
-    const mealAsk = mealChoiceFollowUp(text, priorTexts);
-    const dishCtx = mealDishContext(text, priorTexts, selected?.displayName);
-    const foodBadge = fiammettaRouteLabel("Cibo");
-    const localDraft = mealAsk
-      ? {
-          draft: withFiammettaIntro(mealAsk),
-          label: "Scelta pranzo o cena",
-          summary: "scelta pranzo o cena",
-        }
-      : dishCtx?.dish
-        ? {
-            draft: withFiammettaIntro(
-              buildDishDraft(dishCtx.meal, dishCtx.dish, dishCtx.ingredients),
-            ),
-            label: "Proposta piatto",
-            summary: `${dishCtx.meal} · ${dishCtx.dish}`,
-          }
-        : null;
-    if (localDraft) {
-      const preview = shortPreview(
-        params.sourceMessage
-          ? inboundComposerText(params.sourceMessage) || text
-          : text,
-      );
-      setDraft(localDraft.draft);
-      setRouteBadge({ label: foodBadge, specialistId: "food" });
-      setSuggestionMeta(
-        [
-          params.source === "auto" ? "Bozza automatica" : null,
-          foodBadge,
-          preview ? `msg “${preview}”` : null,
-          localDraft.label,
-          localDraft.summary,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      );
-      setError(null);
-      setSuggesting(false);
-      setSuggestSource(null);
-      return;
-    }
 
     suggestInFlightRef.current = true;
     setSuggesting(true);
@@ -568,6 +608,19 @@ export function ChatApp() {
     autoHandledInboundIdRef.current = handleKey;
     const generation = ++suggestGenerationRef.current;
 
+    const inbound = inboundComposerText(message);
+    const localDraft = inbound ? foodLocalDraft(inbound, message) : null;
+    if (localDraft) {
+      if (generation !== suggestGenerationRef.current) return;
+      setSelectedMessage(message);
+      showFoodLocalDraft(
+        localDraft,
+        "auto",
+        shortPreview(inbound),
+      );
+      return;
+    }
+
     const text = await prepareInboundSelection(message);
     if (generation !== suggestGenerationRef.current) return;
     if (!text.trim()) return;
@@ -602,7 +655,7 @@ export function ChatApp() {
     void runAutoDraft(latest);
     // Intentionally omit runAutoDraft from deps — stable closure via refs/state above.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- poll-driven; guard via autoHandledInboundIdRef
-  }, [messages, selectedId, suggesting, transcribing, sending]);
+  }, [messages, selectedId, composerEpoch, suggesting, transcribing, sending]);
 
   async function handleSend(text: string) {
     if (!selectedId) return;
@@ -719,7 +772,17 @@ export function ChatApp() {
         <Inbox
           conversations={conversations}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          onSelect={(id) => {
+            autoHandledInboundIdRef.current = null;
+            programmaticDraftRef.current = null;
+            suggestInFlightRef.current = false;
+            suggestGenerationRef.current += 1;
+            setDraft("");
+            setSuggestionMeta(null);
+            setRouteBadge(null);
+            setComposerEpoch((epoch) => epoch + 1);
+            setSelectedId(id);
+          }}
         />
       </aside>
       <section className="pane thread-pane">
@@ -747,9 +810,16 @@ export function ChatApp() {
           suggesting={suggesting}
           windowClosed={selected?.serviceWindowStatus === "closed"}
           text={draft}
+          fieldName={`reply-${selectedId ?? "none"}-${composerEpoch}`}
           onTextChange={(value) => {
+            const locked = programmaticDraftRef.current;
+            if (locked !== null && value !== locked) return;
+            programmaticDraftRef.current = null;
             setDraft(value);
             if (suggestionMeta) setSuggestionMeta(null);
+          }}
+          onFocus={() => {
+            programmaticDraftRef.current = null;
           }}
           selectedLabel={selectedLabel}
           statusLabel={statusLabel}
@@ -761,6 +831,7 @@ export function ChatApp() {
             suggestInFlightRef.current = false;
             // Keep autoHandled id so poll does not immediately re-draft.
             setSelectedMessage(null);
+            programmaticDraftRef.current = null;
             setDraft("");
             setTranscribing(false);
             setSuggesting(false);
