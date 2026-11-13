@@ -23,6 +23,18 @@ export function extractJsonObject<T>(
   }
 }
 
+const LLM_TIMEOUT_MS = 20_000;
+
+function isTimeoutError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const name = err.name.toLowerCase();
+  return (
+    name === "timeouterror" ||
+    name === "aborterror" ||
+    /timeout|timed out|aborted/i.test(err.message)
+  );
+}
+
 function isConnectionError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
@@ -63,8 +75,14 @@ async function callClaude(params: {
         messages: [{ role: "user", content: params.userContent }],
       }),
       cache: "no-store",
+      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
   } catch (err) {
+    if (isTimeoutError(err)) {
+      throw new Error(
+        "Anthropic non risponde in tempo (20s). Riprova con Suggerisci.",
+      );
+    }
     if (isConnectionError(err)) {
       throw new Error(
         "Cannot reach Anthropic API — check network connectivity",
@@ -129,8 +147,14 @@ async function callOllama(params: {
         ],
       }),
       cache: "no-store",
+      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
   } catch (err) {
+    if (isTimeoutError(err)) {
+      throw new Error(
+        `Ollama non risponde in tempo (20s) su ${params.baseUrl}. Controlla che sia avviato, poi riprova con Suggerisci.`,
+      );
+    }
     if (isConnectionError(err)) {
       throw new Error(
         `Ollama unreachable at ${params.baseUrl} — start Ollama (ollama serve), pull the model (ollama pull ${params.model}), and keep Next.js on the same machine. Check OLLAMA_BASE_URL.`,

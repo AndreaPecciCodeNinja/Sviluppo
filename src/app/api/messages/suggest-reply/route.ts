@@ -85,7 +85,9 @@ export async function POST(request: NextRequest) {
     const message =
       err instanceof Error ? err.message : "Suggest reply failed";
     const unreachable =
-      /ollama unreachable|cannot reach anthropic|econnrefused/i.test(message);
+      /ollama unreachable|cannot reach anthropic|econnrefused|non risponde in tempo/i.test(
+        message,
+      );
     return NextResponse.json(
       {
         error: {

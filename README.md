@@ -88,7 +88,7 @@ Example food flow: inbound “pomodori, mozzarella, basilico, olio” → templa
 
 If the latest inbound is only a yes (`sì`, `ok`, `va bene`, …) and it does **not** say pranzo or cena, and the thread already has that meal question or an ingredient list, the composer gets one draft: “Perfetto. Preferisci il pranzo o la cena?”. Once per message id, still not sent.
 
-If the latest inbound picks **pranzo** or **cena** (even that single word) and the thread already has ingredients, the draft proposes a dish for that meal instead of asking again. Example: `uova, farina, zucchero, cacao` then `Cena` → “Per la cena ti propongo una torta al cacao. Userò uova, farina, zucchero e cacao.” Other lists go to the reply model for a dish name. Still one draft per message id, never auto-sent.
+If the latest inbound picks **pranzo** or **cena** (even that single word) and the thread already has ingredients, opening the chat (or the new inbound on poll) fills the composer with a dish draft — no **Suggerisci** click and no paste. Example: `uova, farina, zucchero, cacao` then `Cena` → “Per la cena ti propongo una torta al cacao. Userò uova, farina, zucchero e cacao.” That case does not call Ollama. Other lists ask the model for a dish name, with a 20s timeout and a clear error instead of an endless spinner. Auto-draft runs once per message id; a new auto-draft version (`food-dish-2`) runs once more for an id already handled by an older page. Nothing is sent until **Send**.
 
 Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `when_to_use`, `body` with `{{slots}}`).
 
