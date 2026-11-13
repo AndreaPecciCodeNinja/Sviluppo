@@ -57,7 +57,22 @@ async function callClaude(params: {
   model: string;
   system: string;
   userContent: string;
+  temperature?: number;
+  maxTokens?: number;
+  schema?: Record<string, unknown>;
 }): Promise<string> {
+  const payload: Record<string, unknown> = {
+    model: params.model,
+    max_tokens: params.maxTokens ?? 512,
+    temperature: params.temperature ?? 0,
+    system: params.system,
+    messages: [{ role: "user", content: params.userContent }],
+  };
+  if (params.schema) {
+    payload.output_config = {
+      format: { type: "json_schema", schema: params.schema },
+    };
+  }
   let response: Response;
   try {
     response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -65,15 +80,9 @@ async function callClaude(params: {
       headers: {
         "content-type": "application/json",
         "x-api-key": params.apiKey,
-        "anthropic-version": "2023-06-01",
+        "anthropic-version": params.schema ? "2026-10-21" : "2023-06-01",
       },
-      body: JSON.stringify({
-        model: params.model,
-        max_tokens: 512,
-        temperature: 0,
-        system: params.system,
-        messages: [{ role: "user", content: params.userContent }],
-      }),
+      body: JSON.stringify(payload),
       cache: "no-store",
       signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
@@ -224,6 +233,30 @@ export async function completeWithOllama(params: {
     temperature: params.temperature,
   });
   return { raw, model, baseUrl };
+}
+
+/** Chef menu. Larger Claude model, JSON schema. Never prints the API key. */
+export async function completeWithClaude(params: {
+  system: string;
+  userText: string;
+  schema: Record<string, unknown>;
+  temperature: number;
+}): Promise<{ raw: string; model: string }> {
+  const { apiKey } = getClaudeConfig();
+  if (!apiKey) {
+    throw new Error("Manca ANTHROPIC_API_KEY nell'ambiente.");
+  }
+  const model = process.env.ANTHROPIC_CHEF_MODEL?.trim() || "claude-opus-5-5";
+  const raw = await callClaude({
+    apiKey,
+    model,
+    system: params.system,
+    userContent: params.userText,
+    temperature: params.temperature,
+    maxTokens: 2048,
+    schema: params.schema,
+  });
+  return { raw, model };
 }
 
 export async function completeWithReplyProvider(params: {

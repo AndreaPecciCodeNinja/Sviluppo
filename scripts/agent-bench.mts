@@ -4,11 +4,43 @@
  * Listens only on 127.0.0.1:3300.
  */
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { answerCustomer } from "../src/lib/agents/customer-turn.ts";
 
 const HOST = "127.0.0.1";
 const PORT = 3300;
+
+/** Reads a key already on disk. Does not print the value. */
+function envFromFile(name: string): void {
+  if (process.env[name]) return;
+  for (const file of [".env.local", ".env"]) {
+    let text = "";
+    try {
+      text = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq < 1 || trimmed.slice(0, eq).trim() !== name) continue;
+      let value = trimmed.slice(eq + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      if (value) process.env[name] = value;
+      return;
+    }
+  }
+}
+
+envFromFile("ANTHROPIC_API_KEY");
+envFromFile("ANTHROPIC_CHEF_MODEL");
 
 function revision(): string {
   try {

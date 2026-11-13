@@ -554,34 +554,47 @@ const badMenu = {
 };
 let calls: Array<{
   url: string;
+  model: string;
   temperature: unknown;
   format: unknown;
   system: string;
   user: string;
+  hasKey: boolean;
 }> = [];
 function mockChef(contents: string[]) {
   let n = 0;
   globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? "{}")) as {
-      format?: unknown;
-      options?: { temperature?: unknown };
-      messages?: Array<{ role?: string; content?: string }>;
+      model?: string;
+      temperature?: unknown;
+      system?: string;
+      output_config?: { format?: unknown };
+      messages?: Array<{ content?: string }>;
     };
+    const headers = (init?.headers ?? {}) as Record<string, string>;
     calls.push({
       url: String(url),
-      temperature: body.options?.temperature,
-      format: body.format,
-      system: body.messages?.find((item) => item.role === "system")?.content ?? "",
-      user: body.messages?.find((item) => item.role === "user")?.content ?? "",
+      model: body.model ?? "",
+      temperature: body.temperature,
+      format: body.output_config?.format,
+      system: body.system ?? "",
+      user: body.messages?.[0]?.content ?? "",
+      hasKey: Boolean(headers["x-api-key"]),
     });
     const content = contents[Math.min(n, contents.length - 1)];
     n += 1;
-    return new Response(JSON.stringify({ message: { content } }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ content: [{ type: "text", text: content }] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
   }) as typeof fetch;
 }
+const savedKey = process.env.ANTHROPIC_API_KEY;
+delete process.env.ANTHROPIC_API_KEY;
+const missingKey = await answerCustomer({ question: "cena", prior: pepperPrior });
+assert.match(missingKey, /Manca ANTHROPIC_API_KEY nell'ambiente/);
+assert.doesNotMatch(missingKey, /incolla/i);
+process.env.ANTHROPIC_API_KEY = "test-key";
 calls = [];
 mockChef([JSON.stringify(badMenu), JSON.stringify(chefMenu)]);
 let pepperCena = "";
@@ -591,9 +604,12 @@ try {
   globalThis.fetch = originalFetch;
 }
 assert.equal(calls.length, 2);
-assert.equal(calls[0].url, "http://127.0.0.1:11434/api/chat");
+assert.equal(calls[0].url, "https://api.anthropic.com/v1/messages");
+assert.equal(calls[0].model, "claude-opus-5-5");
 assert.equal(calls[0].temperature, 0.4);
-assert.equal((calls[0].format as { type?: string }).type, "object");
+assert.equal(calls[0].hasKey, true);
+assert.equal((calls[0].format as { type?: string }).type, "json_schema");
+assert.ok((calls[0].format as { schema?: { properties?: { menu?: unknown } } }).schema?.properties?.menu);
 assert.match(calls[0].system, /Usa SOLO gli alimenti dati, più sale, pepe, olio e acqua/);
 assert.match(calls[0].system, /antipasto, primo, secondo, contorno, dolce/);
 assert.match(calls[0].system, /piatto è null e note/);
@@ -607,16 +623,16 @@ assert.doesNotMatch(pepperCena, /elenchi gli alimenti|allergen/i);
 
 calls = [];
 globalThis.fetch = (async () => {
-  throw new Error("Ollama unreachable at http://127.0.0.1:11434");
+  throw new Error("Cannot reach Anthropic API");
 }) as typeof fetch;
-let ollamaDown = "";
+let claudeDown = "";
 try {
-  ollamaDown = await answerCustomer({ question: "cena", prior: pepperPrior });
+  claudeDown = await answerCustomer({ question: "cena", prior: pepperPrior });
 } finally {
   globalThis.fetch = originalFetch;
 }
-assert.match(ollamaDown, /Ollama non ha scritto il menù/);
-assert.match(ollamaDown, /unreachable/i);
+assert.match(claudeDown, /Claude non ha scritto il menù/);
+assert.match(claudeDown, /Anthropic/i);
 assert.equal(calls.length, 0);
 
 const menuPrior = [
@@ -650,10 +666,12 @@ globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
   };
   calls.push({
     url: String(_url),
+    model: "",
     temperature: undefined,
     format: undefined,
     system: body.messages?.find((item) => item.role === "system")?.content ?? "",
     user: body.messages?.find((item) => item.role === "user")?.content ?? "",
+    hasKey: false,
   });
   return new Response(JSON.stringify({ message: { content: againAnswer } }), {
     status: 200,
@@ -672,5 +690,7 @@ assert.match(calls[0].user, /Pasto già scelto: la cena/);
 assert.match(calls[0].user, /uova, spaghetti, pepe e pecorino/);
 assert.match(calls[0].user, /Ha già detto sì/);
 assert.doesNotMatch(againReply, /elenchi gli alimenti/);
+if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+else process.env.ANTHROPIC_API_KEY = savedKey;
 
 console.log("specialist heuristic checks ok");

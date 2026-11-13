@@ -1,4 +1,4 @@
-import { completeWithOllama, extractJsonObject } from "./llm";
+import { completeWithClaude, completeWithOllama, extractJsonObject } from "./llm";
 import {
   bareMealChoice,
   chosenMeal,
@@ -48,8 +48,6 @@ const MENU_SCHEMA: Record<string, unknown> = {
   properties: {
     menu: {
       type: "array",
-      minItems: 5,
-      maxItems: 5,
       items: {
         type: "object",
         additionalProperties: false,
@@ -111,6 +109,11 @@ function wantsTheMenu(text: string): boolean {
 function ollamaError(err: unknown): string {
   const message = err instanceof Error ? err.message : "errore sconosciuto";
   return `Ollama non ha scritto il menù. ${message}`;
+}
+
+function claudeError(err: unknown): string {
+  const message = err instanceof Error ? err.message : "errore sconosciuto";
+  return `Claude non ha scritto il menù. ${message}`;
 }
 
 function stem(value: string): string {
@@ -243,7 +246,7 @@ async function askChef(
   ]
     .filter(Boolean)
     .join("\n");
-  const completed = await completeWithOllama({
+  const completed = await completeWithClaude({
     system: CHEF_PROMPT,
     userText,
     schema: MENU_SCHEMA,
@@ -257,13 +260,13 @@ async function chefMenu(
   ingredients: readonly string[],
 ): Promise<string> {
   if (ingredients.length < 2) {
-    return "Ollama non ha scritto il menù. Manca la lista degli alimenti scritti dalla persona.";
+    return "Claude non ha scritto il menù. Manca la lista degli alimenti scritti dalla persona.";
   }
   let raw: string;
   try {
     raw = await askChef(meal, ingredients);
   } catch (err) {
-    return ollamaError(err);
+    return claudeError(err);
   }
   const first = readMenu(raw);
   const firstProblems = typeof first === "string" ? [first] : menuProblems(first, ingredients);
@@ -283,7 +286,7 @@ async function chefMenu(
       ].join("\n"),
     );
   } catch (err) {
-    return ollamaError(err);
+    return claudeError(err);
   }
   const second = readMenu(secondRaw);
   const secondProblems =
@@ -291,7 +294,7 @@ async function chefMenu(
   if (typeof second !== "string" && secondProblems.length === 0) {
     return JSON.stringify(second, null, 2);
   }
-  return `Ollama non ha scritto il menù. ${secondProblems.join(" ")}`;
+  return `Claude non ha scritto il menù. ${secondProblems.join(" ")}`;
 }
 
 function confirmedMeal(prior: readonly string[]): {
