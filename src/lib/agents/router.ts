@@ -1,3 +1,8 @@
+import {
+  FIAMMETTA_ROLE,
+  fiammettaRouteLabel,
+  withFiammettaIntro,
+} from "./fiammetta";
 import { extractJsonObject, completeWithReplyProvider } from "./llm";
 import { mealChoiceFollowUp } from "./meal-choice";
 import { resolveMealDishDraft } from "./meal-dish";
@@ -51,7 +56,9 @@ function normalizeIntent(
 
 function routerPrompt(enabled: ReadonlySet<RouterIntent>): string {
   const lines = [
-    "You route one inbound WhatsApp message for a small business inbox.",
+    FIAMMETTA_ROLE,
+    "Classify the inbound WhatsApp message and hand it to exactly one specialist.",
+    "Do not write the specialist reply.",
     "Choose exactly one intent:",
   ];
   if (enabled.has("appointment")) {
@@ -147,11 +154,11 @@ export async function routeInboundMessage(
     const followUp = mealChoiceFollowUp(text, priorTexts);
     if (followUp) {
       return {
-        draft: followUp,
+        draft: withFiammettaIntro(followUp),
         autoEligible: true,
         specialistId: "food",
         specialistLabel: food.label,
-        routeLabel: `Router → ${food.label}`,
+        routeLabel: fiammettaRouteLabel(food.label),
         intent: "food_meal",
         rationale: "Conferma senza pranzo o cena: chiedo quale pasto",
         intentSummary: "scelta pranzo o cena",
@@ -166,11 +173,11 @@ export async function routeInboundMessage(
     const dish = await resolveMealDishDraft(text, priorTexts);
     if (dish) {
       return {
-        draft: dish.draft,
+        draft: withFiammettaIntro(dish.draft),
         autoEligible: true,
         specialistId: "food",
         specialistLabel: food.label,
-        routeLabel: `Router → ${food.label}`,
+        routeLabel: fiammettaRouteLabel(food.label),
         intent: "food_meal",
         rationale: `Pasto scelto (${dish.meal}): propongo il piatto, senza rifare la domanda`,
         intentSummary: `${dish.meal} · ${dish.dish}`,
@@ -201,11 +208,11 @@ export async function routeInboundMessage(
   const autoEligible = owner.id === "generic" ? false : drafted.autoEligible;
 
   return {
-    draft: drafted.draft,
+    draft: withFiammettaIntro(drafted.draft),
     autoEligible,
     specialistId: owner.id,
     specialistLabel: owner.label,
-    routeLabel: `Router → ${owner.label}`,
+    routeLabel: fiammettaRouteLabel(owner.label),
     intent: classification.intent,
     rationale: [classification.rationale, drafted.rationale]
       .filter(Boolean)

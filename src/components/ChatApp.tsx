@@ -10,6 +10,7 @@ import {
   type OllamaHealthView,
 } from "./OllamaStatusBadge";
 import { Thread } from "./Thread";
+import { fiammettaRouteLabel, withFiammettaIntro } from "@/lib/agents/fiammetta";
 import {
   buildDishDraft,
   mealChoiceFollowUp,
@@ -378,15 +379,18 @@ export function ChatApp() {
       .slice(-40);
     const mealAsk = mealChoiceFollowUp(text, priorTexts);
     const dishCtx = mealDishContext(text, priorTexts);
+    const foodBadge = fiammettaRouteLabel("Cibo");
     const localDraft = mealAsk
       ? {
-          draft: mealAsk,
+          draft: withFiammettaIntro(mealAsk),
           label: "Scelta pranzo o cena",
           summary: "scelta pranzo o cena",
         }
       : dishCtx?.dish
         ? {
-            draft: buildDishDraft(dishCtx.meal, dishCtx.dish, dishCtx.ingredients),
+            draft: withFiammettaIntro(
+              buildDishDraft(dishCtx.meal, dishCtx.dish, dishCtx.ingredients),
+            ),
             label: "Proposta piatto",
             summary: `${dishCtx.meal} · ${dishCtx.dish}`,
           }
@@ -398,11 +402,11 @@ export function ChatApp() {
           : text,
       );
       setDraft(localDraft.draft);
-      setRouteBadge({ label: "Router → Cibo", specialistId: "food" });
+      setRouteBadge({ label: foodBadge, specialistId: "food" });
       setSuggestionMeta(
         [
           params.source === "auto" ? "Bozza automatica" : null,
-          "Router → Cibo",
+          foodBadge,
           preview ? `msg “${preview}”` : null,
           localDraft.label,
           localDraft.summary,
@@ -695,8 +699,8 @@ export function ChatApp() {
     ? "Trascrizione…"
     : suggesting
       ? suggestSource === "auto"
-        ? "Router · bozza automatica…"
-        : "Router sta scegliendo lo specialista…"
+        ? "Fiammetta · bozza automatica…"
+        : "Fiammetta sta affidando lo specialista…"
       : null;
 
   return (

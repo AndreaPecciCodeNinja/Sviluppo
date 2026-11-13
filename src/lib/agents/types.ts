@@ -44,7 +44,7 @@ export type RoutedDraft = {
   autoEligible: boolean;
   specialistId: SpecialistId;
   specialistLabel: string;
-  /** Composer badge, e.g. "Router → Appuntamenti". */
+  /** Composer badge, e.g. "Fiammetta → Appuntamenti". */
   routeLabel: string;
   intent: RouterIntent;
   rationale: string;
@@ -59,7 +59,7 @@ export type RoutedDraft = {
 
 export type SpecialistDefinition = {
   id: SpecialistId;
-  /** Short Italian name shown after "Router →". */
+  /** Short Italian name shown after "Fiammetta →". */
   label: string;
   intent: RouterIntent;
   /**

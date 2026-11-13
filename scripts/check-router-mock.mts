@@ -23,7 +23,7 @@ globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
   const body = JSON.parse(String(init?.body ?? "{}")) as ChatBody;
   const system =
     body.messages?.find((message) => message.role === "system")?.content ?? "";
-  if (system.includes("route one inbound")) {
+  if (system.includes("Non svolgi tu il lavoro specialistico")) {
     if (system.includes("pomodori") || /ingredient|pranzo/i.test(system)) {
       /* system prompt is static; the user text is in the next message */
     }
@@ -67,7 +67,8 @@ const appointment = await routeInboundMessage(
   "Vorrei un appuntamento martedì alle 15",
 );
 assert.equal(appointment.specialistId, "appointments");
-assert.equal(appointment.routeLabel, "Router → Appuntamenti");
+assert.equal(appointment.routeLabel, "Fiammetta → Appuntamenti");
+assert.match(appointment.draft, /^Sono Fiammetta\. /);
 assert.equal(appointment.autoEligible, true);
 assert.match(appointment.draft, /martedì/);
 assert.match(appointment.draft, /15:00/);
@@ -76,14 +77,16 @@ assert.equal(appointment.intent, "appointment");
 
 const food = await routeInboundMessage("pomodori, mozzarella, basilico, olio");
 assert.equal(food.specialistId, "food");
-assert.equal(food.routeLabel, "Router → Cibo");
+assert.equal(food.routeLabel, "Fiammetta → Cibo");
+assert.match(food.draft, /^Sono Fiammetta\. /);
 assert.equal(food.autoEligible, true);
 assert.match(food.draft, /pomodori, mozzarella, basilico, olio/);
 assert.match(food.draft, /pranzo/i);
 
 const generic = await routeInboundMessage("ciao, grazie");
 assert.equal(generic.specialistId, "generic");
-assert.equal(generic.routeLabel, "Router → Generico");
+assert.equal(generic.routeLabel, "Fiammetta → Generico");
+assert.match(generic.draft, /^Sono Fiammetta\. Grazie per il messaggio/);
 assert.equal(generic.autoEligible, false);
 assert.match(generic.draft, /Grazie per il messaggio/);
 
@@ -92,10 +95,13 @@ const meal = await routeInboundMessage("sì", {
   priorTexts: ["pomodori, mozzarella, basilico, olio"],
 });
 assert.equal(providerCalls, callsBeforeMeal);
-assert.equal(meal.draft, "Perfetto. Preferisci il pranzo o la cena?");
+assert.equal(
+  meal.draft,
+  "Sono Fiammetta. Perfetto. Preferisci il pranzo o la cena?",
+);
 assert.equal(meal.autoEligible, true);
 assert.equal(meal.specialistId, "food");
-assert.equal(meal.routeLabel, "Router → Cibo");
+assert.equal(meal.routeLabel, "Fiammetta → Cibo");
 assert.equal(meal.templateId, "food_meal_choice");
 
 const callsBeforeDish = providerCalls;
@@ -105,15 +111,21 @@ const cacaoDish = await routeInboundMessage("Cena", {
 assert.equal(providerCalls, callsBeforeDish);
 assert.equal(cacaoDish.templateId, "food_dish_proposal");
 assert.equal(cacaoDish.autoEligible, true);
-assert.equal(cacaoDish.routeLabel, "Router → Cibo");
-assert.match(cacaoDish.draft, /Per la cena ti propongo una torta al cacao/);
+assert.equal(cacaoDish.routeLabel, "Fiammetta → Cibo");
+assert.match(
+  cacaoDish.draft,
+  /^Sono Fiammetta\. Per la cena ti propongo una torta al cacao/,
+);
 assert.doesNotMatch(cacaoDish.draft, /Vuoi che ti prepari|pranzo o la cena/i);
 
 const otherDish = await routeInboundMessage("pranzo", {
   priorTexts: ["pollo, riso, zucchine"],
 });
 assert.equal(otherDish.templateId, "food_dish_proposal");
-assert.match(otherDish.draft, /Per il pranzo ti propongo un risotto/);
+assert.match(
+  otherDish.draft,
+  /^Sono Fiammetta\. Per il pranzo ti propongo un risotto/,
+);
 assert.doesNotMatch(otherDish.draft, /Vuoi che ti prepari/i);
 assert.ok(providerCalls > callsBeforeDish);
 
@@ -122,7 +134,7 @@ const disabled = await routeInboundMessage(
   "Vorrei un appuntamento martedì alle 15",
 );
 assert.equal(disabled.specialistId, "generic");
-assert.equal(disabled.routeLabel, "Router → Generico");
+assert.equal(disabled.routeLabel, "Fiammetta → Generico");
 assert.equal(disabled.autoEligible, false);
 
 console.log("router mock checks ok");

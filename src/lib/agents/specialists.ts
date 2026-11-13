@@ -1,3 +1,4 @@
+import { fiammettaRouteLabel } from "./fiammetta";
 import { draftAppointment, draftFood, draftGeneric, APPOINTMENT_EXTRACT_PROMPT } from "./handlers";
 import { matchAppointment, matchFood } from "./match";
 import type { RouterIntent, SpecialistDefinition, SpecialistId } from "./types";
@@ -56,7 +57,7 @@ export function listSpecialistCatalog() {
     label: specialist.label,
     intent: specialist.intent,
     enabled: isEnvEnabled(specialist.envFlag),
-    routeLabel: `Router → ${specialist.label}`,
+    routeLabel: fiammettaRouteLabel(specialist.label),
     envFlag: specialist.envFlag ?? null,
   }));
 }

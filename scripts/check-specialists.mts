@@ -5,6 +5,10 @@ import {
   normalizeTime,
 } from "../src/lib/agents/appointment-draft.ts";
 import {
+  fiammettaRouteLabel,
+  withFiammettaIntro,
+} from "../src/lib/agents/fiammetta.ts";
+import {
   buildDishDraft,
   chosenMeal,
   ingredientsFromThread,
@@ -117,5 +121,15 @@ assert.match(draft, /Per la cena ti propongo una torta al cacao/);
 assert.match(draft, /uova, farina, zucchero e cacao/);
 assert.doesNotMatch(draft, /Vuoi che ti prepari|pranzo o la cena/i);
 assert.equal(mealDishContext("sì", cacao), null);
+assert.equal(fiammettaRouteLabel("Cibo"), "Fiammetta → Cibo");
+assert.equal(fiammettaRouteLabel("Appuntamenti"), "Fiammetta → Appuntamenti");
+assert.equal(
+  withFiammettaIntro("Perfetto. Preferisci il pranzo o la cena?"),
+  "Sono Fiammetta. Perfetto. Preferisci il pranzo o la cena?",
+);
+assert.equal(
+  withFiammettaIntro("Sono Fiammetta. Già presentato."),
+  "Sono Fiammetta. Già presentato.",
+);
 
 console.log("specialist heuristic checks ok");
