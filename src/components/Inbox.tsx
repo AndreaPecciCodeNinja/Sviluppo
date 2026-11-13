@@ -58,9 +58,12 @@ export function Inbox({ conversations, selectedId, onSelect }: InboxProps) {
                     : ""}
                 </span>
                 {c.unreadCount > 0 ? (
-                  <span className="badge" aria-label={`${c.unreadCount} unread`}>
-                    {c.unreadCount}
-                  </span>
+                  <span
+                    className="badge badge-new"
+                    role="status"
+                    aria-label="Nuovo messaggio"
+                    title="Nuovo messaggio"
+                  />
                 ) : null}
               </div>
             </button>

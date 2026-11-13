@@ -4,7 +4,7 @@ import {
   withFiammettaIntro,
 } from "./fiammetta";
 import { extractJsonObject, completeWithReplyProvider } from "./llm";
-import { mealChoiceFollowUp } from "./meal-choice";
+import { ingredientMealQuestion, mealChoiceFollowUp } from "./meal-choice";
 import { resolveMealDishDraft } from "./meal-dish";
 import { heuristicIntent } from "./match";
 import { getReplyProvider } from "../reply-provider";
@@ -167,6 +167,25 @@ export async function routeInboundMessage(
         slots: {},
         templateId: "food_meal_choice",
         templateLabel: "Scelta pranzo o cena",
+        model: "heuristic",
+        provider: getReplyProvider(),
+      };
+    }
+
+    const listed = ingredientMealQuestion(text);
+    if (listed) {
+      return {
+        draft: withFiammettaIntro(listed),
+        autoEligible: true,
+        specialistId: "food",
+        specialistLabel: food.label,
+        routeLabel: fiammettaRouteLabel(food.label),
+        intent: "food_meal",
+        rationale: "Lista ingredienti senza pasto: chiedo pranzo o cena, senza modello",
+        intentSummary: "lista ingredienti",
+        slots: {},
+        templateId: "food_ingredients_meal",
+        templateLabel: "Pranzo o cena con ingredienti",
         model: "heuristic",
         provider: getReplyProvider(),
       };

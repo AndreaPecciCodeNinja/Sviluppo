@@ -12,6 +12,7 @@ import {
   buildDishDraft,
   chosenMeal,
   customerNameFromDisplay,
+  ingredientMealQuestion,
   ingredientsFromThread,
   isBareAffirmation,
   mealChoiceFollowUp,
@@ -136,6 +137,15 @@ assert.deepEqual(lunchPlate?.ingredients, [
   "insalata",
 ]);
 assert.equal(mealDishContext("cena alle 20", []), null);
+const grocery =
+  "Mi servirebbe del latte, delle uova, due zucchine e una salsiccia";
+const groceryAsk = ingredientMealQuestion(grocery);
+assert.ok(groceryAsk);
+assert.match(groceryAsk || "", /latte, uova, zucchine, salsiccia/);
+assert.match(groceryAsk || "", /pranzo o la cena/i);
+assert.doesNotMatch(groceryAsk || "", /Mi servirebbe|delle|due|una/i);
+assert.equal(ingredientMealQuestion("Cena"), null);
+assert.equal(ingredientMealQuestion("ciao"), null);
 
 const mixedThread = [
   "Ciao Andrea, farina, zucchero, cacao, uova",
