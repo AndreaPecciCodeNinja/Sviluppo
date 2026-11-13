@@ -196,6 +196,21 @@ async function callOllama(params: {
   return messageContent;
 }
 
+/** Always Ollama, even when the reply provider is Claude. */
+export async function completeWithOllama(params: {
+  system: string;
+  userText: string;
+}): Promise<{ raw: string; model: string; baseUrl: string }> {
+  const { baseUrl, model } = getOllamaConfig();
+  const raw = await callOllama({
+    baseUrl,
+    model,
+    system: params.system,
+    userContent: params.userText,
+  });
+  return { raw, model, baseUrl };
+}
+
 export async function completeWithReplyProvider(params: {
   system: string;
   userText: string;

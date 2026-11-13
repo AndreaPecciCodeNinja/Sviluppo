@@ -146,7 +146,7 @@ const server = createServer(async (request, response) => {
         send(response, 400, JSON.stringify({ error: "manca la domanda" }), "application/json");
         return;
       }
-      const answer = answerCustomer({ question, prior });
+      const answer = await answerCustomer({ question, prior });
       send(response, 200, JSON.stringify({ answer }), "application/json");
     } catch {
       send(response, 400, JSON.stringify({ error: "domanda non valida" }), "application/json");

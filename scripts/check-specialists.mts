@@ -484,29 +484,60 @@ const nextCena = provaFiammettaReply("cena", [
 assert.match(nextCena?.draft || "", /per la cena con pomodori, mozzarella, basilico e olio va bene/i);
 assert.equal(provaFiammettaReply("ciao"), null);
 assert.equal(provaFiammettaReply("  "), null);
-const manualAsk = answerCustomer({
+const manualAsk = await answerCustomer({
   question: "uovo, pancetta, pecorino, spaghetti",
   prior: [],
 });
 assert.match(manualAsk, /pranzo o la cena/);
-const manualOther = answerCustomer({
+const manualOther = await answerCustomer({
   question: "che ore sono?",
   prior: [],
 });
 assert.match(manualOther, /che ore sono\?/);
 const pepperPrior: string[] = [];
-const pepperAsk = answerCustomer({
+const pepperAsk = await answerCustomer({
   question: "uova, spaghetti, pecorino, pepe",
   prior: pepperPrior,
 });
 pepperPrior.push("uova, spaghetti, pecorino, pepe", pepperAsk);
-const pepperSi = answerCustomer({ question: "si", prior: pepperPrior });
+const pepperSi = await answerCustomer({ question: "si", prior: pepperPrior });
 pepperPrior.push("si", pepperSi);
-const pepperCena = answerCustomer({ question: "cena", prior: pepperPrior });
+const pepperCena = await answerCustomer({ question: "cena", prior: pepperPrior });
 pepperPrior.push("cena", pepperCena);
-const pepperDish = answerCustomer({ question: "si", prior: pepperPrior });
+const originalFetch = globalThis.fetch;
+let ollamaUrl = "";
+let ollamaSystem = "";
+let ollamaUser = "";
+globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+  ollamaUrl = String(url);
+  const body = JSON.parse(String(init?.body ?? "{}")) as {
+    messages?: Array<{ role?: string; content?: string }>;
+  };
+  ollamaSystem = body.messages?.find((item) => item.role === "system")?.content ?? "";
+  ollamaUser = body.messages?.find((item) => item.role === "user")?.content ?? "";
+  return new Response(
+    JSON.stringify({
+      message: {
+        content: JSON.stringify({
+          menu: "Per la cena preparo una carbonara con uova, spaghetti, pecorino e pepe.",
+        }),
+      },
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}) as typeof fetch;
+let pepperDish = "";
+try {
+  pepperDish = await answerCustomer({ question: "si", prior: pepperPrior });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.equal(ollamaUrl, "http://127.0.0.1:11434/api/chat");
+assert.match(ollamaSystem, /solo gli alimenti scritti dalla persona/i);
+assert.match(ollamaSystem, /Non aggiungere peperoni, pomodoro, olio/i);
+assert.match(ollamaUser, /uova, spaghetti, pecorino e pepe/i);
 assert.match(pepperCena, /Per la cena con uova, spaghetti, pecorino e pepe va bene/i);
-assert.match(pepperDish, /Per la cena preparo una carbonara/);
-assert.doesNotMatch(pepperDish, /Sulla tua domanda|uova|spaghetti|pecorino|pepe/);
+assert.match(pepperDish, /Per la cena preparo una carbonara con uova, spaghetti, pecorino e pepe/);
+assert.doesNotMatch(pepperDish, /Sulla tua domanda|peperoni|pomodoro|\bolio\b/);
 
 console.log("specialist heuristic checks ok");
