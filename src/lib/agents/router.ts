@@ -5,7 +5,11 @@ import {
 } from "./fiammetta";
 import { extractJsonObject, completeWithReplyProvider } from "./llm";
 import { bareMealChoice, chosenMeal } from "./meal-choice";
-import { foodSequencePhase, provaFiammettaReply } from "./prova-reply";
+import {
+  foodSequencePhase,
+  isFoodSequenceTurn,
+  provaFiammettaReply,
+} from "./prova-reply";
 import { heuristicIntent } from "./match";
 import { getReplyProvider } from "../reply-provider";
 import {
@@ -218,7 +222,7 @@ export async function routeInboundMessage(
     }
 
     if (
-      foodSequencePhase(priorTexts) !== "start" ||
+      (isFoodSequenceTurn(text) && foodSequencePhase(priorTexts) !== "start") ||
       bareMealChoice(text) ||
       chosenMeal(text)
     ) {

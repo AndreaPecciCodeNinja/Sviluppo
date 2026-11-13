@@ -469,6 +469,18 @@ assert.equal(
 );
 assert.equal(provaFiammettaReply("cena", carbonaraPrior.slice(0, 6)), null);
 assert.equal(provaFiammettaReply("si", carbonaraPrior), null);
+const nextList = provaFiammettaReply(
+  "pomodori, mozzarella, basilico, olio",
+  carbonaraPrior,
+);
+assert.match(nextList?.draft || "", /pranzo o la cena/);
+assert.doesNotMatch(nextList?.draft || "", /carbonara/);
+const nextCena = provaFiammettaReply("cena", [
+  ...carbonaraPrior,
+  "pomodori, mozzarella, basilico, olio",
+  nextList?.draft || "",
+]);
+assert.match(nextCena?.draft || "", /per la cena con pomodori, mozzarella, basilico e olio va bene/i);
 assert.equal(provaFiammettaReply("ciao"), null);
 assert.equal(provaFiammettaReply("  "), null);
 
