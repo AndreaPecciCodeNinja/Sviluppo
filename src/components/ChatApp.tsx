@@ -11,7 +11,7 @@ import {
 } from "./OllamaStatusBadge";
 import { Thread } from "./Thread";
 import { fiammettaRouteLabel, withFiammettaIntro } from "@/lib/agents/fiammetta";
-import { provaFiammettaReply, foodSequencePhase } from "@/lib/agents/prova-reply";
+import { provaFiammettaReply, foodSequencePhase, isFoodSequenceTurn } from "@/lib/agents/prova-reply";
 import {
   FOOD_AUTO_SEND_TRIED_KEY,
   FOOD_AUTO_SENT_TEXTS_KEY,
@@ -559,6 +559,7 @@ export function ChatApp() {
   ): boolean {
     const priorTexts = threadPriorTexts(sourceMessage);
     return (
+      isFoodSequenceTurn(text) &&
       foodSequencePhase(priorTexts) !== "start" &&
       !provaFiammettaReply(text, priorTexts, selected?.displayName)
     );
