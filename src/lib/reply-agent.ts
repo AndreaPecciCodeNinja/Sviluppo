@@ -6,14 +6,16 @@ import {
   renderTemplate,
   type ReplyTemplate,
 } from "./reply-templates";
-import { type ReplyProvider } from "./reply-provider";
+import { replyProviderLabel, type ReplyProvider } from "./reply-provider";
 
 export type { ReplyProvider } from "./reply-provider";
 export {
   getClaudeConfig,
   getOllamaConfig,
+  getOpenAIReplyConfig,
   getReplyAgentStatus,
   getReplyProvider,
+  replyProviderLabel,
 } from "./reply-provider";
 
 export type SuggestReplyResult = {
@@ -181,7 +183,7 @@ export async function suggestReplyFromText(
   const completed = await completeWithReplyProvider({ system, userText: text });
   const choice = extractJsonObject<ModelChoice>(
     completed.raw,
-    completed.provider === "ollama" ? "Ollama" : "Claude",
+    replyProviderLabel(completed.provider),
     "valid JSON for template choice",
   );
   return renderChoice(choice, text, completed.model, completed.provider);

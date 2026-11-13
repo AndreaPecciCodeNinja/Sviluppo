@@ -111,7 +111,7 @@ SPECIALIST_FOOD=1
 SPECIALIST_APPOINTMENTS=1
 ```
 
-Set either to `0` / `false` / `off` to skip that specialist (the message falls through to Generico, still without auto-send). Provider remains `REPLY_PROVIDER=ollama` (default on Mac) or `claude`.
+Set either to `0` / `false` / `off` to skip that specialist (the message falls through to Generico, still without auto-send). Provider remains `REPLY_PROVIDER=ollama` (default on Mac), `claude`, or `openai`. Food drafts that already know the meal and the last ingredient list stay local and do not call the model.
 
 #### Provider: Claude (default)
 
@@ -139,7 +139,18 @@ OLLAMA_MODEL=qwen2.5:7b
 
 If Ollama is down or the model is missing, the UI shows a clear error (start Ollama / `ollama pull …`). No cloud API key needed for this path.
 
-The thread toolbar **always** shows an Ollama status pill (even if `REPLY_PROVIDER=claude`): green **Ollama disponibile** when reachable + model installed; amber otherwise. A debug line shows `provider` / `reachable` / `model`. Health: on load, every ~15s (`GET /api/ollama/health` → Ollama `/api/tags`), and before **Suggerisci risposta**. Default `REPLY_PROVIDER` in `.env.example` is **ollama**.
+#### Provider: OpenAI
+
+Uses the same `OPENAI_API_KEY` as Whisper. Default model `gpt-4o-mini` (override `OPENAI_REPLY_MODEL`). In `.env.local`:
+
+```env
+REPLY_PROVIDER=openai
+OPENAI_REPLY_MODEL=gpt-4o-mini
+```
+
+Restart `npm run dev` after saving. The key stays in `.env.local`; do not paste it into chat.
+
+The thread toolbar **always** shows an Ollama status pill (even if `REPLY_PROVIDER` is `claude` or `openai`): green **Ollama disponibile** when reachable + model installed; amber otherwise. A debug line shows `provider` / `reachable` / `model`. Health: on load, every ~15s (`GET /api/ollama/health` → Ollama `/api/tags`), and before **Suggerisci risposta**. Default `REPLY_PROVIDER` in `.env.example` is **ollama**. When the reply provider is OpenAI, a down Ollama does not block the draft.
 
 ### Local memory (LangChain + SQLite)
 
@@ -148,7 +159,7 @@ No cloud keys for memory. SQLite file defaults to `.data/memory.sqlite` (gitigno
 1. Open a conversation → **Memoria (SQLite)** panel under the composer.
 2. Select inbound text (or Whisper) → optional auto-snippet write-back.
 3. Click **Salva fatto dal box** to store a durable fact for that contact.
-4. **Suggerisci risposta** loads facts + recent snippets into the Claude/Ollama prompt.
+4. **Suggerisci risposta** loads facts + recent snippets into the Claude, OpenAI, or Ollama prompt.
 5. Outbound Send also appends an `ai` snippet.
 
 Optional env:
@@ -171,10 +182,11 @@ Plan: project store `docs/langchain-sqlite-memory-plan.md`.
 | `BIRD_WORKSPACE_ID` | no | Only if using a master key |
 | `BIRD_WEBHOOK_SECRET` | no | `whsec_…` for Standard Webhooks verify |
 | `NEXT_PUBLIC_POLL_INTERVAL_MS` | no | UI poll interval (default 3000) |
-| `OPENAI_API_KEY` | for voice STT | Whisper transcription of inbound audio |
+| `OPENAI_API_KEY` | for voice STT, and when `REPLY_PROVIDER=openai` | Whisper, and OpenAI chat completions for drafts |
 | `OPENAI_TRANSCRIBE_MODEL` | no | default `whisper-1` |
 | `OPENAI_TRANSCRIBE_LANGUAGE` | no | default `it` (Italian) |
-| `REPLY_PROVIDER` | no | `ollama` (default) or `claude` |
+| `OPENAI_REPLY_MODEL` | no | default `gpt-4o-mini` when `REPLY_PROVIDER=openai` |
+| `REPLY_PROVIDER` | no | `ollama` (default), `claude`, or `openai` |
 | `ANTHROPIC_API_KEY` | when provider=claude | Claude Messages API |
 | `ANTHROPIC_MODEL` | no | default `claude-haiku-4-5` |
 | `OLLAMA_BASE_URL` | no | default `http://127.0.0.1:11434` |
@@ -215,7 +227,7 @@ Free-form replies require an open **24-hour customer service window**. Outside t
 src/lib/bird.ts              Bird REST client + media download (server-only)
 src/lib/transcribe.ts        Bird media → OpenAI Whisper
 src/lib/reply-agent.ts       Claude / Ollama template fill for the food specialist
-src/lib/reply-provider.ts    REPLY_PROVIDER, model, and Ollama/Claude config
+src/lib/reply-provider.ts    REPLY_PROVIDER, model, and Ollama/Claude/OpenAI config
 src/lib/agents/              Inbound router + specialist registry (food, appointments, generic)
 src/lib/reply-templates.ts   Load/render config/reply-templates.json
 src/lib/memory/              SQLite facts/snippets + LangChain-compatible history adapter

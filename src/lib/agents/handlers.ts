@@ -7,6 +7,7 @@ import {
 import { completeWithReplyProvider, extractJsonObject } from "./llm";
 import { rememberInbound } from "./memory-context";
 import { suggestReplyFromText } from "../reply-agent";
+import { replyProviderLabel } from "../reply-provider";
 import type { DraftContext, SpecialistDraft } from "./types";
 
 const FOOD_TEMPLATE_ID = "food_ingredients_meal";
@@ -83,7 +84,7 @@ export async function draftAppointment(
     provider = completed.provider;
     const parsed = extractJsonObject<AppointmentModel>(
       completed.raw,
-      completed.provider === "ollama" ? "Ollama" : "Claude",
+      replyProviderLabel(completed.provider),
     );
     modelSlots = {
       date: asSlot(parsed.date),

@@ -1,9 +1,17 @@
-export type ReplyProvider = "claude" | "ollama";
+export type ReplyProvider = "claude" | "ollama" | "openai";
 
 export function getReplyProvider(): ReplyProvider {
-  // Default ollama for local Mac/dev; set REPLY_PROVIDER=claude to use Anthropic.
+  // Default ollama for local Mac/dev.
   const raw = (process.env.REPLY_PROVIDER || "ollama").trim().toLowerCase();
-  return raw === "claude" ? "claude" : "ollama";
+  if (raw === "claude") return "claude";
+  if (raw === "openai") return "openai";
+  return "ollama";
+}
+
+export function replyProviderLabel(provider: ReplyProvider): string {
+  if (provider === "ollama") return "Ollama";
+  if (provider === "openai") return "OpenAI";
+  return "Claude";
 }
 
 export function getClaudeConfig() {
@@ -24,6 +32,13 @@ export function getOllamaConfig() {
   };
 }
 
+export function getOpenAIReplyConfig() {
+  return {
+    apiKey: process.env.OPENAI_API_KEY?.trim() || "",
+    model: process.env.OPENAI_REPLY_MODEL?.trim() || "gpt-4o-mini",
+  };
+}
+
 export function getReplyAgentStatus() {
   const provider = getReplyProvider();
   if (provider === "ollama") {
@@ -34,6 +49,16 @@ export function getReplyAgentStatus() {
       model,
       baseUrl,
       missing: [] as string[],
+    };
+  }
+  if (provider === "openai") {
+    const { apiKey, model } = getOpenAIReplyConfig();
+    return {
+      provider,
+      configured: Boolean(apiKey),
+      model,
+      baseUrl: null as string | null,
+      missing: apiKey ? [] : (["OPENAI_API_KEY"] as string[]),
     };
   }
   const { apiKey, model } = getClaudeConfig();

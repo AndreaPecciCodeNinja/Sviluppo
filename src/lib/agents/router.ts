@@ -7,7 +7,7 @@ import { extractJsonObject, completeWithReplyProvider } from "./llm";
 import { mealChoiceFollowUp } from "./meal-choice";
 import { resolveMealDishDraft } from "./meal-dish";
 import { heuristicIntent } from "./match";
-import { getReplyProvider } from "../reply-provider";
+import { getReplyProvider, replyProviderLabel } from "../reply-provider";
 import {
   enabledIntents,
   getSpecialist,
@@ -92,7 +92,7 @@ export async function classifyIntent(text: string): Promise<Classification> {
   try {
     parsed = extractJsonObject<RouterModel>(
       completed.raw,
-      completed.provider === "ollama" ? "Ollama" : "Claude",
+      replyProviderLabel(completed.provider),
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
