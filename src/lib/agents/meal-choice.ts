@@ -319,6 +319,14 @@ export function heuristicDish(ingredients: readonly string[]): string | null {
   if (/pollo/iu.test(blob) && /riso/iu.test(blob) && /zucchin/iu.test(blob)) {
     return "un risotto di pollo e zucchine";
   }
+  if (
+    /uov/iu.test(blob) &&
+    /pancett/iu.test(blob) &&
+    /pecorin/iu.test(blob) &&
+    /spaghetti/iu.test(blob)
+  ) {
+    return "una carbonara";
+  }
   return null;
 }
 

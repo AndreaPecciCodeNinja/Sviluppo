@@ -422,6 +422,36 @@ assert.doesNotMatch(
   provaYes?.draft || "",
   /Preferisci il pranzo|Preparo la cena con|ti propongo un piatto con|Userò/i,
 );
+const carbonaraList = "uovo, pancetta, pecorino, spaghetti";
+const carbonaraAsk = provaFiammettaReply(carbonaraList);
+const carbonaraSi = provaFiammettaReply("si", [
+  carbonaraList,
+  carbonaraAsk?.draft || "",
+]);
+assert.match(carbonaraSi?.draft || "", /Preferisci il pranzo o la cena/);
+const carbonaraCena = provaFiammettaReply("cena", [
+  carbonaraList,
+  carbonaraAsk?.draft || "",
+  "si",
+  carbonaraSi?.draft || "",
+]);
+assert.match(
+  carbonaraCena?.draft || "",
+  /per la cena con uovo, pancetta, pecorino e spaghetti va bene/i,
+);
+const carbonaraDish = provaFiammettaReply("si", [
+  carbonaraList,
+  carbonaraAsk?.draft || "",
+  "si",
+  carbonaraSi?.draft || "",
+  "cena",
+  carbonaraCena?.draft || "",
+]);
+assert.match(carbonaraDish?.draft || "", /una carbonara/i);
+assert.doesNotMatch(
+  carbonaraDish?.draft || "",
+  /uovo|pancetta|pecorino|spaghetti|ti propongo un piatto con|Userò/i,
+);
 const provaOther = provaFiammettaReply("ciao");
 assert.match(provaOther?.draft || "", /Sono Fiammetta/);
 assert.equal(provaFiammettaReply("  "), null);
