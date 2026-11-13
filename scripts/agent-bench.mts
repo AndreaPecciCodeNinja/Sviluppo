@@ -3,11 +3,24 @@
  * question and the questions already asked. No WhatsApp and no Bird.
  * Listens only on 127.0.0.1:3300.
  */
+import { execFileSync } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { answerCustomer } from "../src/lib/agents/customer-turn.ts";
 
 const HOST = "127.0.0.1";
 const PORT = 3300;
+
+function revision(): string {
+  try {
+    return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return "sconosciuta";
+  }
+}
+
+const REV = revision();
 
 function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -35,7 +48,8 @@ function send(
 ) {
   response.writeHead(status, {
     "Content-Type": type,
-    "Cache-Control": "no-store",
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+    Pragma: "no-cache",
   });
   response.end(body);
 }
@@ -66,7 +80,7 @@ const page = `<!DOCTYPE html>
 <body>
   <main>
     <h1>Domande e risposte</h1>
-    <p class="lead">Una persona fa una domanda. L’agente risponde in base a quella domanda.</p>
+    <p class="lead">Una persona fa una domanda. L’agente risponde in base a quella domanda. Versione ${REV}.</p>
     <div id="log" aria-live="polite"></div>
     <form id="ask">
       <input id="question" name="question" autocomplete="off" placeholder="Scrivi la domanda e premi Invio" />
@@ -99,6 +113,7 @@ const page = `<!DOCTYPE html>
       bubble("person", question);
       const response = await fetch("/reply", {
         method: "POST",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question, prior }),
       });
@@ -142,5 +157,5 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Domande e risposte su http://${HOST}:${PORT}`);
+  console.log(`Domande e risposte su http://${HOST}:${PORT} (${REV})`);
 });
