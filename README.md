@@ -27,7 +27,6 @@ Set `BIRD_WHATSAPP_PHONE_NUMBER=+393337802795` so list/send calls scope to this 
 - Optional webhook receiver at `/api/webhook` (scaffold acknowledges; UI polls)
 - Setup screen when `BIRD_API_KEY` is missing (no invented secrets)
 - **Offline sentiment browse** at [`/sentiment`](http://localhost:3200/sentiment) — charts + urgency callouts + filterable list from `data/sentiment.json` (no Bird API key)
-- **Prova agenti** at [`/`](http://localhost:3200/) and [`/prova`](http://localhost:3200/prova) — two boxes: foods you type, and Fiammetta’s reply. Enter fills the reply box. The page does not ask to select a chat. The WhatsApp inbox is at [`/inbox`](http://localhost:3200/inbox).
 - **Select inbound message** → editable composer box; **voice notes / audio** download via Bird media API and transcribe with OpenAI Whisper (`language=it`)
 - **Reply agent (Claude or local Ollama)** — classifies the box text, picks a template from `config/reply-templates.json`, fills slots (e.g. food ingredients → pranzo/cena ask), shows editable draft before Bird send
 - **Auto-bozza ultimo inbound** — opening a chat (or a new inbound on poll) selects the latest inbound and asks the **message router** for a specialist draft. **Invio cibo** defaults to **Manuale** (draft stays in the composer). **Automatica** sends that food draft once per inbound id. **Suggerisci risposta** remains a manual override for the text
