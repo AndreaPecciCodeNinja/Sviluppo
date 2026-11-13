@@ -4,8 +4,12 @@ import {
   withFiammettaIntro,
 } from "./fiammetta";
 import { extractJsonObject, completeWithReplyProvider } from "./llm";
-import { ingredientMealQuestion, mealChoiceFollowUp } from "./meal-choice";
-import { resolveMealDishDraft } from "./meal-dish";
+import {
+  bareMealChoice,
+  chosenMeal,
+  ingredientMealQuestion,
+  mealChoiceFollowUp,
+} from "./meal-choice";
 import { heuristicIntent } from "./match";
 import { getReplyProvider } from "../reply-provider";
 import {
@@ -191,28 +195,23 @@ export async function routeInboundMessage(
       };
     }
 
-    const dish = await resolveMealDishDraft(text, priorTexts, {
-      displayName: options.contactDisplayName,
-    });
-    if (dish) {
+    if (bareMealChoice(text) || chosenMeal(text)) {
       return {
-        draft: withFiammettaIntro(dish.draft),
-        autoEligible: true,
+        draft: "",
+        autoEligible: false,
         specialistId: "food",
         specialistLabel: food.label,
         routeLabel: fiammettaRouteLabel(food.label),
         intent: "food_meal",
-        rationale: `Pasto scelto (${dish.meal}): propongo il piatto, senza rifare la domanda`,
-        intentSummary: `${dish.meal} · ${dish.dish}`,
-        slots: {
-          meal: dish.meal,
-          dish: dish.dish,
-          ingredients: dish.ingredients.join(", "),
-        },
-        templateId: "food_dish_proposal",
-        templateLabel: "Proposta piatto",
-        model: dish.model,
-        provider: dish.provider,
+        rationale:
+          "Il messaggio indica già il pasto: Fiammetta non propone un piatto che ripete la lista",
+        intentSummary: "pasto già scelto, nessuna domanda",
+        slots: {},
+        templateId: "food_meal_already_chosen",
+        templateLabel: "Pasto già indicato",
+        model: "heuristic",
+        provider: getReplyProvider(),
+        skipped: true,
       };
     }
   }

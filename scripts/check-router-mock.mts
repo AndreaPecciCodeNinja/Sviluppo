@@ -108,17 +108,10 @@ const lunchPlate = await routeInboundMessage("Sì, preparami il pranzo.", {
   ],
 });
 assert.equal(providerCalls, callsBeforeLunchPlate);
-assert.equal(lunchPlate.templateId, "food_dish_proposal");
-assert.equal(lunchPlate.model, "heuristic");
-assert.match(
-  lunchPlate.draft,
-  /^Sono Fiammetta\. Per il pranzo ti propongo una frittata di zucchine e salsiccia/,
-);
-assert.match(lunchPlate.draft, /uova e un goccio di latte/);
-assert.doesNotMatch(
-  lunchPlate.draft,
-  /Userò latte, uova, zucchine e salsiccia|torta|carne|Andrea|Failed to fetch/i,
-);
+assert.equal(lunchPlate.skipped, true);
+assert.equal(lunchPlate.autoEligible, false);
+assert.equal(lunchPlate.draft, "");
+assert.doesNotMatch(lunchPlate.draft, /ti propongo|un piatto con|Userò/i);
 
 const generic = await routeInboundMessage("ciao, grazie");
 assert.equal(generic.specialistId, "generic");
@@ -149,40 +142,28 @@ const caponataReply = await routeInboundMessage("cena", {
   ],
 });
 assert.equal(providerCalls, callsBeforeCaponata);
-assert.equal(caponataReply.templateId, "food_dish_proposal");
-assert.match(
-  caponataReply.draft,
-  /^Sono Fiammetta\. Per la cena ti propongo una caponata di verdure/,
-);
-assert.doesNotMatch(caponataReply.draft, /un piatto con|Vuoi che ti prepari/i);
+assert.equal(caponataReply.skipped, true);
+assert.equal(caponataReply.draft, "");
+assert.doesNotMatch(caponataReply.draft, /ti propongo|un piatto con|Userò/i);
 
 const callsBeforeDish = providerCalls;
 const cacaoDish = await routeInboundMessage("Cena", {
   priorTexts: ["uova, farina, zucchero, cacao"],
 });
 assert.equal(providerCalls, callsBeforeDish);
-assert.equal(cacaoDish.templateId, "food_dish_proposal");
-assert.equal(cacaoDish.autoEligible, true);
-assert.equal(cacaoDish.routeLabel, "Fiammetta → Cibo");
-assert.match(
-  cacaoDish.draft,
-  /^Sono Fiammetta\. Per la cena ti propongo una torta al cacao/,
-);
-assert.doesNotMatch(cacaoDish.draft, /Vuoi che ti prepari|pranzo o la cena/i);
+assert.equal(cacaoDish.skipped, true);
+assert.equal(cacaoDish.autoEligible, false);
+assert.equal(cacaoDish.draft, "");
+assert.doesNotMatch(cacaoDish.draft, /ti propongo|torta|Userò/i);
 
 const callsBeforeLunch = providerCalls;
 const lunchDish = await routeInboundMessage("Si, preparami il pranzo.", {
   priorTexts: ["carne, pane, pomodori, insalata"],
 });
 assert.equal(providerCalls, callsBeforeLunch);
-assert.equal(lunchDish.templateId, "food_dish_proposal");
-assert.equal(lunchDish.autoEligible, true);
-assert.match(
-  lunchDish.draft,
-  /^Sono Fiammetta\. Per il pranzo ti propongo un panino con carne/,
-);
-assert.match(lunchDish.draft, /carne, pane, pomodori e insalata/);
-assert.doesNotMatch(lunchDish.draft, /Vuoi che ti prepari|pranzo o la cena/i);
+assert.equal(lunchDish.skipped, true);
+assert.equal(lunchDish.draft, "");
+assert.doesNotMatch(lunchDish.draft, /ti propongo|panino|Userò/i);
 
 const mixedDish = await routeInboundMessage("Si, preparami il pranzo.", {
   contactDisplayName: "Tommaso",
@@ -192,20 +173,16 @@ const mixedDish = await routeInboundMessage("Si, preparami il pranzo.", {
     "Carne, pane, pomodori, insalata",
   ],
 });
-assert.equal(mixedDish.templateId, "food_dish_proposal");
-assert.match(mixedDish.draft, /panino con carne/);
-assert.match(mixedDish.draft, /Carne, pane, pomodori e insalata/);
-assert.doesNotMatch(mixedDish.draft, /torta|cacao|Andrea|Ciao Tommaso|Tommaso/i);
+assert.equal(mixedDish.skipped, true);
+assert.equal(mixedDish.draft, "");
+assert.doesNotMatch(mixedDish.draft, /ti propongo|panino|torta|Andrea|Tommaso/i);
 
 const otherDish = await routeInboundMessage("pranzo", {
   priorTexts: ["pollo, riso, zucchine"],
 });
-assert.equal(otherDish.templateId, "food_dish_proposal");
-assert.match(
-  otherDish.draft,
-  /^Sono Fiammetta\. Per il pranzo ti propongo un piatto con pollo, riso e zucchine/,
-);
-assert.doesNotMatch(otherDish.draft, /Vuoi che ti prepari/i);
+assert.equal(otherDish.skipped, true);
+assert.equal(otherDish.draft, "");
+assert.doesNotMatch(otherDish.draft, /ti propongo|un piatto con|Userò/i);
 assert.equal(providerCalls, callsBeforeLunch);
 
 process.env.SPECIALIST_APPOINTMENTS = "0";

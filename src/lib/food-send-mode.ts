@@ -13,7 +13,6 @@ export const WINDOW_CLOSED_MESSAGE =
 const FOOD_CUSTOMER_TEMPLATES = new Set([
   "food_ingredients_meal",
   "food_meal_choice",
-  "food_dish_proposal",
 ]);
 
 export function isFoodCustomerDraft(
