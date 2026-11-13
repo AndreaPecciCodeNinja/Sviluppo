@@ -10,7 +10,7 @@ import {
   type OllamaHealthView,
 } from "./OllamaStatusBadge";
 import { Thread } from "./Thread";
-import { mealChoiceFollowUp } from "@/lib/agents/meal-choice";
+import { mealChoiceFollowUp, mealDishContext } from "@/lib/agents/meal-choice";
 import type {
   BirdConfigStatus,
   ChatMessage,
@@ -27,6 +27,7 @@ const OLLAMA_HEALTH_MS = 15000;
 const AUTO_DRAFT_TEMPLATE_IDS = new Set([
   "food_ingredients_meal",
   "food_meal_choice",
+  "food_dish_proposal",
 ]);
 
 function findLatestInbound(messages: ChatMessage[]): ChatMessage | null {
@@ -342,8 +343,9 @@ export function ChatApp() {
       .filter(Boolean)
       .slice(-40);
     const asksMealChoice = Boolean(mealChoiceFollowUp(text, priorTexts));
+    const knownDish = Boolean(mealDishContext(text, priorTexts)?.dish);
     try {
-      if (!asksMealChoice) {
+      if (!asksMealChoice && !knownDish) {
         const health = await loadOllamaHealth();
         if (params.generation !== suggestGenerationRef.current) return;
         if (health?.provider === "ollama" && !health.ok) {

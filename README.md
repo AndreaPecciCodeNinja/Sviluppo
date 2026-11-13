@@ -86,7 +86,9 @@ Requires `OPENAI_API_KEY` in `.env.local` for step 4. Without it, text selection
 Example food flow: inbound “pomodori, mozzarella, basilico, olio” → template `food_ingredients_meal` →  
 “Hai elencato questi ingredienti: pomodori, mozzarella, basilico, olio. Vuoi che ti prepari il pranzo o la cena…?”
 
-If the latest inbound is only a yes (`sì`, `ok`, `va bene`, …) and it does **not** say pranzo or cena, and the thread already has that meal question or an ingredient list, the composer gets one draft: “Perfetto. Preferisci il pranzo o la cena?”. Once per message id, still not sent. An inbound that already says pranzo or cena stays on the existing food path.
+If the latest inbound is only a yes (`sì`, `ok`, `va bene`, …) and it does **not** say pranzo or cena, and the thread already has that meal question or an ingredient list, the composer gets one draft: “Perfetto. Preferisci il pranzo o la cena?”. Once per message id, still not sent.
+
+If the latest inbound picks **pranzo** or **cena** (even that single word) and the thread already has ingredients, the draft proposes a dish for that meal instead of asking again. Example: `uova, farina, zucchero, cacao` then `Cena` → “Per la cena ti propongo una torta al cacao. Userò uova, farina, zucchero e cacao.” Other lists go to the reply model for a dish name. Still one draft per message id, never auto-sent.
 
 Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `when_to_use`, `body` with `{{slots}}`).
 
@@ -96,7 +98,7 @@ Add more templates by editing `config/reply-templates.json` (`id`, `intent`, `wh
 
 | Specialist | Intent | Auto-draft |
 |------------|--------|------------|
-| `food` | ingredient list / pranzo\|cena, or a bare yes after that context | yes for `food_ingredients_meal`, and for the pranzo/cena question after sì/ok/va bene |
+| `food` | ingredient list, a bare yes, or pranzo/cena after that list | yes: ask which meal, or propose a dish once the meal is chosen |
 | `appointments` | appointment, time, “ci vediamo” | yes — confirmation if day and time are present, otherwise a question |
 | `generic` | anything else | no — short ack only if you press **Suggerisci risposta** |
 

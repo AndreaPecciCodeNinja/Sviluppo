@@ -37,6 +37,9 @@ globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
     }
     return reply({ intent: "generic", rationale: "saluto" });
   }
+  if (system.includes("name one Italian home dish")) {
+    return reply({ dish: "un risotto con pollo e zucchine" });
+  }
   if (system.includes("extract appointment")) {
     return reply({
       date: "",
@@ -95,11 +98,24 @@ assert.equal(meal.specialistId, "food");
 assert.equal(meal.routeLabel, "Router → Cibo");
 assert.equal(meal.templateId, "food_meal_choice");
 
-const namedMeal = await routeInboundMessage("pranzo", {
-  priorTexts: ["pomodori, mozzarella, basilico, olio"],
+const callsBeforeDish = providerCalls;
+const cacaoDish = await routeInboundMessage("Cena", {
+  priorTexts: ["uova, farina, zucchero, cacao"],
 });
-assert.notEqual(namedMeal.templateId, "food_meal_choice");
-assert.ok(providerCalls > callsBeforeMeal);
+assert.equal(providerCalls, callsBeforeDish);
+assert.equal(cacaoDish.templateId, "food_dish_proposal");
+assert.equal(cacaoDish.autoEligible, true);
+assert.equal(cacaoDish.routeLabel, "Router → Cibo");
+assert.match(cacaoDish.draft, /Per la cena ti propongo una torta al cacao/);
+assert.doesNotMatch(cacaoDish.draft, /Vuoi che ti prepari|pranzo o la cena/i);
+
+const otherDish = await routeInboundMessage("pranzo", {
+  priorTexts: ["pollo, riso, zucchine"],
+});
+assert.equal(otherDish.templateId, "food_dish_proposal");
+assert.match(otherDish.draft, /Per il pranzo ti propongo un risotto/);
+assert.doesNotMatch(otherDish.draft, /Vuoi che ti prepari/i);
+assert.ok(providerCalls > callsBeforeDish);
 
 process.env.SPECIALIST_APPOINTMENTS = "0";
 const disabled = await routeInboundMessage(
