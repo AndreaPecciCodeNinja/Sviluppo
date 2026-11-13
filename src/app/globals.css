@@ -549,6 +549,22 @@ button.bubble {
   color: var(--muted);
 }
 
+.simulate-yes {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.18rem 0.7rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.simulate-yes:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .composer-clear {
   margin-top: 0;
   font-size: 0.8rem;

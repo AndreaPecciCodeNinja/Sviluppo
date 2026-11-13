@@ -19,6 +19,7 @@ type ComposerProps = {
   specialistId?: string | null;
   onSend: (text: string) => Promise<void>;
   onSuggestReply?: () => Promise<void>;
+  onSimulateYes?: () => void;
   onClearSelection?: () => void;
 };
 
@@ -38,6 +39,7 @@ export function Composer({
   specialistId,
   onSend,
   onSuggestReply,
+  onSimulateYes,
   onClearSelection,
 }: ComposerProps) {
   async function handleSubmit(event: FormEvent) {
@@ -83,6 +85,16 @@ export function Composer({
           ) : null}
         </div>
         <div className="composer-meta-actions">
+          {onSimulateYes ? (
+            <button
+              type="button"
+              className="simulate-yes"
+              onClick={onSimulateYes}
+              disabled={disabled || busy || sending}
+            >
+              Simula sì
+            </button>
+          ) : null}
           {onSuggestReply ? (
             <button
               type="button"
