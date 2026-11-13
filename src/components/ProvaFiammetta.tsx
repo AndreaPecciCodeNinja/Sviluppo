@@ -17,10 +17,12 @@ export function ProvaFiammetta() {
     const text = draft.trim();
     if (!text) return;
     const next = provaFiammettaReply(text, priorRef.current);
-    if (!next) return;
-    priorRef.current = [...priorRef.current, text, next.draft];
+    priorRef.current = next
+      ? [...priorRef.current, text, next.draft]
+      : [...priorRef.current, text];
     setQuestions((prev) => (prev ? `${prev}${text}\n\n` : `${text}\n\n`));
     setDraft("");
+    if (!next) return;
     setReplies((prev) => (prev ? `${prev}\n\n${next.draft}` : next.draft));
   }
 

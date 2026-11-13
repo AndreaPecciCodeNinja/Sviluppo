@@ -452,8 +452,24 @@ assert.doesNotMatch(
   carbonaraDish?.draft || "",
   /uovo|pancetta|pecorino|spaghetti|ti propongo un piatto con|Userò/i,
 );
-const provaOther = provaFiammettaReply("ciao");
-assert.match(provaOther?.draft || "", /Sono Fiammetta/);
+const carbonaraPrior = [
+  carbonaraList,
+  carbonaraAsk?.draft || "",
+  "si",
+  carbonaraSi?.draft || "",
+  "cena",
+  carbonaraCena?.draft || "",
+  "si",
+  carbonaraDish?.draft || "",
+];
+assert.equal(provaFiammettaReply(carbonaraList, carbonaraPrior), null);
+assert.equal(
+  provaFiammettaReply("si", [carbonaraList, carbonaraAsk?.draft || "", "si", carbonaraSi?.draft || ""]),
+  null,
+);
+assert.equal(provaFiammettaReply("cena", carbonaraPrior.slice(0, 6)), null);
+assert.equal(provaFiammettaReply("si", carbonaraPrior), null);
+assert.equal(provaFiammettaReply("ciao"), null);
 assert.equal(provaFiammettaReply("  "), null);
 
 console.log("specialist heuristic checks ok");
