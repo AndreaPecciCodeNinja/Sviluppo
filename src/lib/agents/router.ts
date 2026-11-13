@@ -9,6 +9,7 @@ import {
   chosenMeal,
   ingredientMealQuestion,
   mealChoiceFollowUp,
+  mealFollowUpQuestion,
 } from "./meal-choice";
 import { heuristicIntent } from "./match";
 import { getReplyProvider } from "../reply-provider";
@@ -195,6 +196,30 @@ export async function routeInboundMessage(
       };
     }
 
+    const afterMeal = mealFollowUpQuestion(
+      text,
+      priorTexts,
+      options.contactDisplayName,
+    );
+    if (afterMeal) {
+      return {
+        draft: withFiammettaIntro(afterMeal),
+        autoEligible: true,
+        specialistId: "food",
+        specialistLabel: food.label,
+        routeLabel: fiammettaRouteLabel(food.label),
+        intent: "food_meal",
+        rationale:
+          "Pasto scelto: una domanda sulla lista più recente, senza piatto-eco",
+        intentSummary: "conferma pasto e ingredienti",
+        slots: {},
+        templateId: "food_meal_followup",
+        templateLabel: "Conferma pasto e ingredienti",
+        model: "heuristic",
+        provider: getReplyProvider(),
+      };
+    }
+
     if (bareMealChoice(text) || chosenMeal(text)) {
       return {
         draft: "",
@@ -204,8 +229,8 @@ export async function routeInboundMessage(
         routeLabel: fiammettaRouteLabel(food.label),
         intent: "food_meal",
         rationale:
-          "Il messaggio indica già il pasto: Fiammetta non propone un piatto che ripete la lista",
-        intentSummary: "pasto già scelto, nessuna domanda",
+          "Il messaggio indica il pasto ma non c'è una lista da confermare",
+        intentSummary: "pasto senza lista",
         slots: {},
         templateId: "food_meal_already_chosen",
         templateLabel: "Pasto già indicato",
