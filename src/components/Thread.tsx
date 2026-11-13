@@ -54,9 +54,9 @@ export function Thread({
           {serviceWindowStatus ? ` · CS window: ${serviceWindowStatus}` : ""}
         </p>
         <p className="hint thread-hint">
-          Manuale: la bozza resta nel riquadro e parte solo con Send. Automatica:
-          parte da sola, senza Send. Dopo «va bene?», Simula sì mette la bozza
-          successiva nel riquadro, senza WhatsApp.
+          Manuale: la bozza resta nel riquadro e parte solo con Send. Nel box
+          «Simula in chat» scrivi gli alimenti: la domanda pranzo o cena resta
+          nel riquadro, collegata al messaggio aperto, senza WhatsApp.
         </p>
       </header>
       <div className="thread-messages" role="log" aria-live="polite">
