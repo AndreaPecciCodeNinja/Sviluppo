@@ -4,7 +4,7 @@ import { ProvaFiammetta } from "@/components/ProvaFiammetta";
 export const metadata: Metadata = {
   title: "Prova agenti",
   description:
-    "Pagina separata per provare Fiammetta senza Bird e senza invio WhatsApp.",
+    "Due box per provare Fiammetta, senza Bird e senza chat WhatsApp.",
 };
 
 export default function ProvaPage() {
