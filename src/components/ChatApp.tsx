@@ -23,6 +23,41 @@ import type {
   Conversation,
 } from "@/lib/types";
 
+const SEEN_INBOX_KEY = "inbox-seen-message-at";
+
+function readSeenInbox(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SEEN_INBOX_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return {};
+    const seen: Record<string, string> = {};
+    for (const [id, at] of Object.entries(parsed)) {
+      if (typeof at === "string" && at) seen[id] = at;
+    }
+    return seen;
+  } catch {
+    return {};
+  }
+}
+
+/** Dot only when a message arrived after the chat was last opened. */
+function hasUnseenMessage(
+  conversation: Conversation,
+  seenAt: Readonly<Record<string, string>>,
+  openId: string | null,
+): boolean {
+  if (conversation.id === openId) return false;
+  const openedAt = seenAt[conversation.id];
+  if (openedAt) {
+    const latest = Date.parse(conversation.lastMessageAt);
+    const seen = Date.parse(openedAt);
+    return Number.isFinite(latest) && Number.isFinite(seen) && latest > seen;
+  }
+  return conversation.unreadCount > 0;
+}
+
 const POLL_MS = Number(process.env.NEXT_PUBLIC_POLL_INTERVAL_MS || 3000);
 const INTERVAL =
   Number.isFinite(POLL_MS) && POLL_MS > 500 ? POLL_MS : 3000;
@@ -115,6 +150,8 @@ export function ChatApp() {
   const [ollamaChecking, setOllamaChecking] = useState(false);
   /** Bumps when the inbox conversation is opened, including a re-click. */
   const [composerEpoch, setComposerEpoch] = useState(0);
+  /** lastMessageAt already opened, so the inbox dot stays off until a newer message. */
+  const [seenInboxAt, setSeenInboxAt] = useState<Record<string, string>>({});
 
   /** `${version}:${messageId}` already auto-drafted — avoid poll loops. */
   const autoHandledInboundIdRef = useRef<string | null>(null);
@@ -214,6 +251,25 @@ export function ChatApp() {
       setError(err instanceof Error ? err.message : "Failed to load thread");
     }
   }, []);
+
+  useEffect(() => {
+    setSeenInboxAt(readSeenInbox());
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId || !selected?.lastMessageAt) return;
+    const at = selected.lastMessageAt;
+    setSeenInboxAt((prev) => {
+      if (prev[selectedId] === at) return prev;
+      const next = { ...prev, [selectedId]: at };
+      try {
+        window.localStorage.setItem(SEEN_INBOX_KEY, JSON.stringify(next));
+      } catch {
+        /* the dot still clears for this page load */
+      }
+      return next;
+    });
+  }, [selectedId, selected?.lastMessageAt]);
 
   useEffect(() => {
     void loadStatus();
@@ -780,6 +836,15 @@ export function ChatApp() {
         <Inbox
           conversations={conversations}
           selectedId={selectedId}
+          unseenIds={
+            new Set(
+              conversations
+                .filter((conversation) =>
+                  hasUnseenMessage(conversation, seenInboxAt, selectedId),
+                )
+                .map((conversation) => conversation.id),
+            )
+          }
           onSelect={(id) => {
             autoHandledInboundIdRef.current = null;
             programmaticDraftRef.current = null;
