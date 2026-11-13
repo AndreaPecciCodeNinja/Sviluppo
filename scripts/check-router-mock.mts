@@ -112,10 +112,13 @@ assert.equal(lunchPlate.templateId, "food_dish_proposal");
 assert.equal(lunchPlate.model, "heuristic");
 assert.match(
   lunchPlate.draft,
-  /^Sono Fiammetta\. Per il pranzo ti propongo un piatto con latte, uova, zucchine e salsiccia/,
+  /^Sono Fiammetta\. Per il pranzo ti propongo una frittata di zucchine e salsiccia/,
 );
-assert.match(lunchPlate.draft, /Userò latte, uova, zucchine e salsiccia/);
-assert.doesNotMatch(lunchPlate.draft, /torta|carne|Andrea|Failed to fetch/i);
+assert.match(lunchPlate.draft, /uova e un goccio di latte/);
+assert.doesNotMatch(
+  lunchPlate.draft,
+  /Userò latte, uova, zucchine e salsiccia|torta|carne|Andrea|Failed to fetch/i,
+);
 
 const generic = await routeInboundMessage("ciao, grazie");
 assert.equal(generic.specialistId, "generic");
