@@ -327,6 +327,14 @@ export function heuristicDish(ingredients: readonly string[]): string | null {
   ) {
     return "una carbonara";
   }
+  if (
+    /uov/iu.test(blob) &&
+    /spaghetti/iu.test(blob) &&
+    /pecorin/iu.test(blob) &&
+    /(?<![\p{L}\p{N}])pepe(?![\p{L}\p{N}])/iu.test(blob)
+  ) {
+    return "una carbonara";
+  }
   return null;
 }
 

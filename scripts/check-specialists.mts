@@ -494,5 +494,19 @@ const manualOther = answerCustomer({
   prior: [],
 });
 assert.match(manualOther, /che ore sono\?/);
+const pepperPrior: string[] = [];
+const pepperAsk = answerCustomer({
+  question: "uova, spaghetti, pecorino, pepe",
+  prior: pepperPrior,
+});
+pepperPrior.push("uova, spaghetti, pecorino, pepe", pepperAsk);
+const pepperSi = answerCustomer({ question: "si", prior: pepperPrior });
+pepperPrior.push("si", pepperSi);
+const pepperCena = answerCustomer({ question: "cena", prior: pepperPrior });
+pepperPrior.push("cena", pepperCena);
+const pepperDish = answerCustomer({ question: "si", prior: pepperPrior });
+assert.match(pepperCena, /Per la cena con uova, spaghetti, pecorino e pepe va bene/i);
+assert.match(pepperDish, /Per la cena preparo una carbonara/);
+assert.doesNotMatch(pepperDish, /Sulla tua domanda|uova|spaghetti|pecorino|pepe/);
 
 console.log("specialist heuristic checks ok");
