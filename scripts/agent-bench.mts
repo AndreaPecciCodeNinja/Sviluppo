@@ -4,20 +4,10 @@
  * Listens only on 127.0.0.1:3300.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { withFiammettaIntro } from "../src/lib/agents/fiammetta.ts";
-import { provaFiammettaReply } from "../src/lib/agents/prova-reply.ts";
+import { answerCustomer } from "../src/lib/agents/customer-turn.ts";
 
 const HOST = "127.0.0.1";
 const PORT = 3300;
-
-function agentAnswer(question: string, prior: readonly string[]): string {
-  const sequenced = provaFiammettaReply(question, prior);
-  if (sequenced?.draft) return sequenced.draft;
-  const asked = question.replace(/\s+/g, " ").trim();
-  return withFiammettaIntro(
-    `Sulla tua domanda «${asked}»: se mi elenchi gli alimenti, ti chiedo se è il pranzo o la cena.`,
-  );
-}
 
 function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -141,7 +131,7 @@ const server = createServer(async (request, response) => {
         send(response, 400, JSON.stringify({ error: "manca la domanda" }), "application/json");
         return;
       }
-      const answer = agentAnswer(question, prior);
+      const answer = answerCustomer({ question, prior });
       send(response, 200, JSON.stringify({ answer }), "application/json");
     } catch {
       send(response, 400, JSON.stringify({ error: "domanda non valida" }), "application/json");

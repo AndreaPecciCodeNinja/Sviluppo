@@ -24,6 +24,7 @@ import {
   mealFollowUpQuestion,
   MEAL_CHOICE_DRAFT,
 } from "../src/lib/agents/meal-choice.ts";
+import { answerCustomer } from "../src/lib/agents/customer-turn.ts";
 import { provaFiammettaReply } from "../src/lib/agents/prova-reply.ts";
 import {
   heuristicIntent,
@@ -483,5 +484,15 @@ const nextCena = provaFiammettaReply("cena", [
 assert.match(nextCena?.draft || "", /per la cena con pomodori, mozzarella, basilico e olio va bene/i);
 assert.equal(provaFiammettaReply("ciao"), null);
 assert.equal(provaFiammettaReply("  "), null);
+const manualAsk = answerCustomer({
+  question: "uovo, pancetta, pecorino, spaghetti",
+  prior: [],
+});
+assert.match(manualAsk, /pranzo o la cena/);
+const manualOther = answerCustomer({
+  question: "che ore sono?",
+  prior: [],
+});
+assert.match(manualOther, /che ore sono\?/);
 
 console.log("specialist heuristic checks ok");
