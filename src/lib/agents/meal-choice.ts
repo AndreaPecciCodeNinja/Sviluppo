@@ -233,13 +233,15 @@ export function ingredientsFromThread(
 ): string[] {
   let latest: string[] = [];
   for (const text of priorTexts) {
-    if (isAssistantFoodEcho(text)) continue;
     const labeled = text.match(/ingredienti\s*:\s*([^\n]+)/iu);
-    const source = labeled ? labeled[1] : text;
-    if (!labeled && (!looksLikeIngredientList(text) || looksLikeMealQuestion(text))) {
+    if (labeled) {
+      const items = withoutContactName(splitItems(labeled[1]), displayName);
+      if (items.length >= 2) latest = items;
       continue;
     }
-    const items = withoutContactName(splitItems(source), displayName);
+    if (isAssistantFoodEcho(text)) continue;
+    if (!looksLikeIngredientList(text) || looksLikeMealQuestion(text)) continue;
+    const items = withoutContactName(splitItems(text), displayName);
     if (items.length >= 2) latest = items;
   }
   return latest;

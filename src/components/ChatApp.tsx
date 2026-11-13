@@ -74,13 +74,22 @@ const AUTO_DRAFT_TEMPLATE_IDS = new Set([
  * Bump when auto-draft behavior changes so an inbound id already handled by
  * an older bundle is drafted again once (same browser session / HMR).
  */
-const AUTO_DRAFT_VERSION = "food-dish-6";
+const AUTO_DRAFT_VERSION = "food-dish-7";
 const SUGGEST_TIMEOUT_MS = 25_000;
 const OLLAMA_TIMEOUT_MESSAGE =
   "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
 
 function autoHandleKey(messageId: string): string {
   return `${AUTO_DRAFT_VERSION}:${messageId}`;
+}
+
+function visibleClientError(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  if (isTimeoutError(err)) return OLLAMA_TIMEOUT_MESSAGE;
+  if (/failed to fetch|networkerror|load failed/i.test(err.message)) {
+    return "Non riesco a raggiungere il server per la bozza. Lo stato di generazione è stato fermato. Ricarica la pagina, poi riprova con Suggerisci.";
+  }
+  return err.message || fallback;
 }
 
 function isTimeoutError(err: unknown): boolean {
@@ -498,7 +507,6 @@ export function ChatApp() {
   }) {
     const text = params.text.trim();
     if (!text || transcribing) return;
-    if (suggestInFlightRef.current) return;
 
     const localDraft = foodLocalDraft(text, params.sourceMessage);
     if (localDraft) {
@@ -519,6 +527,8 @@ export function ChatApp() {
       .map((message) => message.text.trim())
       .filter(Boolean)
       .slice(-40);
+
+    if (suggestInFlightRef.current) return;
 
     suggestInFlightRef.current = true;
     setSuggesting(true);
@@ -633,13 +643,8 @@ export function ChatApp() {
       );
     } catch (err) {
       if (params.generation !== suggestGenerationRef.current) return;
-      setError(
-        isTimeoutError(err)
-          ? OLLAMA_TIMEOUT_MESSAGE
-          : err instanceof Error
-            ? err.message
-            : "Suggest reply failed",
-      );
+      setSuggesting(false);
+      setError(visibleClientError(err, "Suggest reply failed"));
     } finally {
       window.clearTimeout(timer);
       if (params.generation === suggestGenerationRef.current) {
