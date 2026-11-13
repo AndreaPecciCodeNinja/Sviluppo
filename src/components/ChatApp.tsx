@@ -27,6 +27,7 @@ import {
   type FoodSendMode,
 } from "@/lib/food-send-mode";
 import {
+  bareMealChoice,
   buildDishDraft,
   ingredientMealQuestion,
   isOwnFoodReply,
@@ -90,7 +91,7 @@ const AUTO_DRAFT_TEMPLATE_IDS = new Set([
  * Bump when auto-draft behavior changes so an inbound id already handled by
  * an older bundle is drafted again once (same browser session / HMR).
  */
-const AUTO_DRAFT_VERSION = "food-dish-9";
+const AUTO_DRAFT_VERSION = "food-dish-10";
 const SUGGEST_TIMEOUT_MS = 25_000;
 const OLLAMA_TIMEOUT_MESSAGE =
   "Ollama non risponde in tempo. Controlla che sia avviato, poi riprova con Suggerisci.";
@@ -122,7 +123,7 @@ function findLatestInbound(messages: ChatMessage[]): ChatMessage | null {
   let latest: ChatMessage | null = null;
   for (const message of messages) {
     if (message.direction !== "inbound") continue;
-    if (isOwnFoodReply(message.text)) continue;
+    if (isOwnFoodReply(message.text) && !bareMealChoice(message.text)) continue;
     if (!latest) {
       latest = message;
       continue;
@@ -195,6 +196,8 @@ export function ChatApp() {
   /** Bumped on conversation change / clear so stale async work is ignored. */
   const suggestGenerationRef = useRef(0);
   const suggestInFlightRef = useRef(false);
+  /** Bumps when a new draft is written, so an older send cannot clear it. */
+  const composerWriteRef = useRef(0);
   const sendModeRef = useRef<FoodSendMode>("manual");
   sendModeRef.current = sendMode;
   /** Inbound ids already auto-sent, or refused (24h) so a reopen does not retry. */
@@ -471,6 +474,7 @@ export function ChatApp() {
   }
 
   function applyComposerDraft(next: string) {
+    composerWriteRef.current += 1;
     programmaticDraftRef.current = next;
     setDraft(next);
   }
@@ -868,7 +872,12 @@ export function ChatApp() {
 
     const latest = findLatestInbound(messages);
     if (!latest) return;
-    if (autoHandledInboundIdRef.current === autoHandleKey(latest.id)) return;
+    const handleKey = autoHandleKey(latest.id);
+    if (autoHandledInboundIdRef.current === handleKey) {
+      const meal = bareMealChoice(inboundComposerText(latest) || latest.text);
+      if (!meal || draft.trim()) return;
+      autoHandledInboundIdRef.current = null;
+    }
 
     void runAutoDraft(latest);
     // Intentionally omit runAutoDraft from deps — stable closure via refs/state above.
@@ -877,6 +886,7 @@ export function ChatApp() {
 
   async function handleSend(text: string): Promise<AutoSendOutcome> {
     if (!selectedId) return "error";
+    const writeAtStart = composerWriteRef.current;
     setSending(true);
     setError(null);
     setSendError(null);
@@ -918,10 +928,13 @@ export function ChatApp() {
         return windowClosed ? "window" : "error";
       }
       void rememberSnippet({ role: "ai", content: text });
-      setDraft("");
-      setSelectedMessage(null);
-      setSuggestionMeta(null);
-      setRouteBadge(null);
+      if (composerWriteRef.current === writeAtStart) {
+        programmaticDraftRef.current = null;
+        setDraft("");
+        setSelectedMessage(null);
+        setSuggestionMeta(null);
+        setRouteBadge(null);
+      }
       try {
         await Promise.all([loadMessages(selectedId), loadConversations()]);
       } catch {

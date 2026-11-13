@@ -9,6 +9,7 @@ import {
   withFiammettaIntro,
 } from "../src/lib/agents/fiammetta.ts";
 import {
+  bareMealChoice,
   buildDishDraft,
   chosenMeal,
   customerNameFromDisplay,
@@ -112,6 +113,9 @@ const questionAndList = [
   ...cacao,
   "Hai elencato questi ingredienti: uova, farina, zucchero, cacao.\nVuoi che ti prepari il *pranzo* o la *cena* con questi?",
 ];
+assert.equal(bareMealChoice("cena"), "cena");
+assert.equal(bareMealChoice("Pranzo."), "pranzo");
+assert.equal(bareMealChoice("per la cena"), "cena");
 assert.equal(chosenMeal("Cena"), "cena");
 assert.equal(chosenMeal("per il pranzo"), "pranzo");
 assert.equal(chosenMeal("Si, preparami il pranzo."), "pranzo");
@@ -274,6 +278,22 @@ assert.equal(
   }),
   false,
 );
+const vegQuestion =
+  "Sono Fiammetta. Hai elencato questi ingredienti: Pomodori, zucchine, melanzane, aglio.\nVuoi che ti prepari il pranzo o la cena con questi?";
+const quotedCena = `${vegQuestion}\ncena`;
+assert.equal(chosenMeal(quotedCena), null);
+assert.equal(bareMealChoice(quotedCena), "cena");
+const quotedDish = mealDishContext(quotedCena, [
+  "Pomodori, zucchine, melanzane, aglio",
+  vegQuestion,
+]);
+assert.equal(quotedDish?.meal, "cena");
+assert.equal(quotedDish?.dish, "una caponata di verdure");
+const bareCena = mealDishContext("cena", [
+  "Pomodori, zucchine, melanzane, aglio",
+  vegQuestion,
+]);
+assert.equal(bareCena?.dish, "una caponata di verdure");
 const veg = mealDishContext("Cena", ["Pomodori, zucchine, melanzane, aglio"]);
 assert.equal(veg?.meal, "cena");
 assert.equal(veg?.dish, "una caponata di verdure");
