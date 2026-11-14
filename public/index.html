@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Menù dagli alimenti</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --carta: #f4efe6;
+      --ink: #1d1914;
+      --muto: #5c5348;
+      --linea: #d9cfc0;
+      --pannello: #fffdf8;
+      --accento: #8c3d22;
+      --accento-ink: #fffaf6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+      background: var(--carta);
+      color: var(--ink);
+    }
+    header, footer { padding: 1.25rem 1.5rem 0; }
+    h1 { margin: 0; font-size: 1.75rem; font-weight: 600; }
+    header p, footer, .nota {
+      margin: 0.35rem 0 0;
+      color: var(--muto);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.95rem;
+    }
+    details {
+      margin: 1rem 1.5rem 0;
+      background: var(--pannello);
+      border: 1px solid var(--linea);
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    summary { cursor: pointer; font-weight: 600; }
+    .campi {
+      display: grid;
+      gap: 0.6rem;
+      margin-top: 0.75rem;
+    }
+    label { display: grid; gap: 0.3rem; font-size: 0.95rem; }
+    input[type="text"], textarea {
+      width: 100%;
+      border: 1px solid var(--linea);
+      border-radius: 8px;
+      padding: 0.75rem;
+      font: 1rem/1.45 ui-sans-serif, system-ui, sans-serif;
+      color: var(--ink);
+      background: #fff;
+    }
+    #istruzioni { min-height: 5rem; resize: vertical; }
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      padding: 1rem 1.5rem 1.5rem;
+    }
+    section {
+      background: var(--pannello);
+      border: 1px solid var(--linea);
+      border-radius: 12px;
+      padding: 1rem;
+      min-height: 24rem;
+      display: flex;
+      flex-direction: column;
+    }
+    h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
+    #alimenti { flex: 1; min-height: 16rem; resize: vertical; }
+    .azioni, .risposta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+    .risposta { display: none; }
+    .risposta.attivo { display: flex; }
+    .risposta input { flex: 1; min-width: 12rem; }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 0.65rem 1.1rem;
+      background: var(--accento);
+      color: var(--accento-ink);
+      font: 600 1rem/1 ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    button.secondario { background: transparent; color: var(--accento); border: 1px solid var(--accento); }
+    button[aria-pressed="true"] { background: #5c2414; }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    #menu {
+      flex: 1;
+      margin: 0;
+      white-space: pre-wrap;
+      font: 1rem/1.5 ui-sans-serif, system-ui, sans-serif;
+    }
+    #menu.vuoto { color: var(--muto); }
+    #menu.errore { color: #7a2430; }
+    footer { padding-bottom: 1.5rem; }
+    @media (max-width: 800px) {
+      main { grid-template-columns: 1fr; }
+      section { min-height: 0; }
+      #alimenti { min-height: 10rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Menù dagli alimenti</h1>
+    <p>Se scrivi «aiutami a preparare cena», la risposta resta in questo riquadro: una domanda alla volta. Il menù, solo con le note del vault, parte dopo il sì su almeno quattro alimenti.</p>
+  </header>
+  <details id="impostazioni">
+    <summary>Impostazioni</summary>
+    <div class="campi">
+      <label>Nome dell'agente
+        <input id="nome" type="text" maxlength="80" autocomplete="off">
+      </label>
+      <label>Istruzioni fisse
+        <textarea id="istruzioni" maxlength="2000"></textarea>
+      </label>
+      <p class="nota">Restano in questo browser. Claude ne tiene conto in ogni risposta. La chiave non si salva qui.</p>
+    </div>
+  </details>
+  <main>
+    <section>
+      <h2><label for="alimenti">Alimenti</label></h2>
+      <textarea id="alimenti" placeholder="guanciale, pecorino, uova"></textarea>
+      <div class="azioni">
+        <button id="crea" type="button">Crea il menù</button>
+        <button id="parla" class="secondario" type="button" aria-pressed="false">Parla</button>
+      </div>
+    </section>
+    <section>
+      <h2>Menù</h2>
+      <div id="risposta-riga" class="risposta">
+        <input id="risposta" type="text" placeholder="Rispondi a voce o scrivi" autocomplete="off">
+        <button id="invia" type="button">Invia</button>
+      </div>
+      <p id="menu" class="vuoto" aria-live="polite">Il menù comparirà qui, costruito solo con le note del vault.</p>
+    </section>
+  </main>
+  <footer id="stato"></footer>
+  <script>
+    const CHIAVE = "cucina-italiana-impostazioni";
+    const PREDEFINITO = {
+      nome: "Claude",
+      istruzioni: "Presentati come agente AI e indica il tuo nome.",
+    };
+
+    const alimenti = document.querySelector("#alimenti");
+    const crea = document.querySelector("#crea");
+    const parlaBtn = document.querySelector("#parla");
+    const menu = document.querySelector("#menu");
+    const stato = document.querySelector("#stato");
+    const nome = document.querySelector("#nome");
+    const istruzioni = document.querySelector("#istruzioni");
+    const rispostaRiga = document.querySelector("#risposta-riga");
+    const risposta = document.querySelector("#risposta");
+    const invia = document.querySelector("#invia");
+
+    let messaggi = [];
+    let inDialogo = false;
+    let ascolto = null;
+
+    function leggiImpostazioni() {
+      try {
+        const salvate = JSON.parse(localStorage.getItem(CHIAVE) || "null");
+        return {
+          nome: String(salvate?.nome ?? PREDEFINITO.nome).trim() || PREDEFINITO.nome,
+          istruzioni: String(salvate?.istruzioni ?? PREDEFINITO.istruzioni),
+        };
+      } catch {
+        return { ...PREDEFINITO };
+      }
+    }
+
+    function mostraImpostazioni() {
+      const dati = leggiImpostazioni();
+      nome.value = dati.nome;
+      istruzioni.value = dati.istruzioni;
+    }
+
+    function impostazioniAttuali() {
+      return {
+        nome: nome.value.trim() || PREDEFINITO.nome,
+        istruzioni: istruzioni.value.trim(),
+      };
+    }
+
+    function salvaImpostazioni() {
+      localStorage.setItem(CHIAVE, JSON.stringify(impostazioniAttuali()));
+    }
+
+    function mostra(testo, classe) {
+      menu.textContent = testo;
+      menu.className = classe;
+    }
+
+    function parla(testo) {
+      const synth = window.speechSynthesis;
+      if (!synth || !testo) return;
+      const dici = () => {
+        synth.cancel();
+        const frase = new SpeechSynthesisUtterance(testo);
+        frase.lang = "it-IT";
+        const voce = synth.getVoices().find((item) => /^it/i.test(item.lang || ""));
+        if (voce) frase.voice = voce;
+        synth.speak(frase);
+      };
+      if (synth.getVoices().length === 0) {
+        synth.addEventListener("voiceschanged", dici, { once: true });
+        return;
+      }
+      dici();
+    }
+
+    function trascrizione() {
+      return messaggi.map((msg) => `${msg.role === "user" ? "Tu" : "Claude"}: ${msg.content}`).join("\n\n");
+    }
+
+    function dialogoAperto(aperto) {
+      inDialogo = aperto;
+      rispostaRiga.classList.toggle("attivo", aperto);
+    }
+
+    async function chiedi(path, body) {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...body, impostazioni: impostazioniAttuali() }),
+      });
+      return response.json();
+    }
+
+    function èRichiesta(testo) {
+      const raw = testo.trim();
+      if (!raw || raw.includes(",")) return false;
+      return /aiut|prepar|vorrei|fammi|men[uù]|\b(cena|pranzo|colazione)\b/i.test(raw);
+    }
+
+    function suona(data) {
+      if (!data || data.parla === false) return;
+      parla(data.voce || data.testo || data.text);
+    }
+
+    async function cerca(canale) {
+      dialogoAperto(false);
+      const giaDetti = messaggi.slice();
+      messaggi = [];
+      mostra("Cerco nel vault…", "");
+      const data = await chiedi("/api/menu", { alimenti: alimenti.value });
+      const testo = data.text || "Nessuna risposta.";
+      const prima = giaDetti.map((msg) => `${msg.role === "user" ? "Tu" : "Claude"}: ${msg.content}`).join("\n\n");
+      mostra(prima ? `${prima}\n\n${testo}` : testo, data.kind === "errore" ? "errore" : "");
+      if (canale === "voce") suona(data);
+    }
+
+    async function turno(testoUtente, canale) {
+      if (testoUtente) messaggi.push({ role: "user", content: testoUtente });
+      mostra(trascrizione() || "Claude sta scrivendo…", "");
+      const data = await chiedi("/api/dialogo", { messaggi, canale });
+      const detto = data.testo || data.text || "Nessuna risposta.";
+      if (data.stato === "definitivo" && data.alimenti) {
+        messaggi.push({ role: "assistant", content: detto });
+        alimenti.value = data.alimenti;
+        dialogoAperto(false);
+        mostra(`${trascrizione()}\n\nCerco nel vault…`, "");
+        if (canale === "voce") suona(data);
+        const menuData = await chiedi("/api/menu", { alimenti: data.alimenti });
+        mostra(`${trascrizione()}\n\n${menuData.text || ""}`, menuData.kind === "errore" ? "errore" : "");
+        if (canale === "voce") suona(menuData);
+        return;
+      }
+      messaggi.push({ role: "assistant", content: detto });
+      dialogoAperto(true);
+      mostra(trascrizione(), data.kind === "errore" ? "errore" : "");
+      if (canale === "voce") suona(data);
+      risposta.focus();
+    }
+
+    crea.addEventListener("click", async () => {
+      crea.disabled = true;
+      try {
+        const testo = alimenti.value.trim();
+        if (testo && !èRichiesta(testo)) await cerca("scritto");
+        else if (!inDialogo) {
+          if (èRichiesta(testo)) alimenti.value = "";
+          await turno(testo, "scritto");
+        } else risposta.focus();
+      } catch {
+        mostra("Non riesco a parlare con il server.", "errore");
+      } finally {
+        crea.disabled = false;
+      }
+    });
+
+    invia.addEventListener("click", async () => {
+      const testo = risposta.value.trim();
+      if (!testo) return;
+      risposta.value = "";
+      invia.disabled = true;
+      try {
+        if (inDialogo || èRichiesta(testo) || !alimenti.value.trim()) await turno(testo, "scritto");
+        else await cerca("scritto");
+      } catch {
+        mostra("Non riesco a parlare con il server.", "errore");
+      } finally {
+        invia.disabled = false;
+      }
+    });
+
+    risposta.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") invia.click();
+    });
+
+    function fermaAscolto() {
+      if (ascolto) ascolto.stop();
+      ascolto = null;
+      parlaBtn.setAttribute("aria-pressed", "false");
+      parlaBtn.textContent = "Parla";
+    }
+
+    const Riconoscimento = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Riconoscimento) {
+      parlaBtn.disabled = true;
+      parlaBtn.title = "Il riconoscimento vocale non è disponibile in questo browser. Puoi scrivere.";
+    } else {
+      parlaBtn.addEventListener("click", () => {
+        if (ascolto) {
+          fermaAscolto();
+          return;
+        }
+        const riconoscimento = new Riconoscimento();
+        riconoscimento.lang = "it-IT";
+        riconoscimento.interimResults = false;
+        ascolto = riconoscimento;
+        parlaBtn.setAttribute("aria-pressed", "true");
+        parlaBtn.textContent = "Stop";
+        riconoscimento.onresult = (event) => {
+          const testo = event.results[0][0].transcript.trim();
+          if (inDialogo || !alimenti.value.trim() || èRichiesta(testo)) {
+            risposta.value = "";
+            turno(testo, "voce");
+          } else {
+            alimenti.value = `${alimenti.value.trim()} ${testo}`.trim();
+          }
+        };
+        riconoscimento.onerror = () => {
+          mostra("Non ho capito il microfono. Puoi scrivere.", "errore");
+        };
+        riconoscimento.onend = () => {
+          ascolto = null;
+          parlaBtn.setAttribute("aria-pressed", "false");
+          parlaBtn.textContent = "Parla";
+        };
+        riconoscimento.start();
+      });
+    }
+
+    for (const campo of [nome, istruzioni]) {
+      campo.addEventListener("change", salvaImpostazioni);
+    }
+    mostraImpostazioni();
+
+    if (window.speechSynthesis) {
+      window.speechSynthesis.addEventListener("voiceschanged", () => {});
+    }
+
+    fetch("/api/stato")
+      .then((response) => response.json())
+      .then((data) => {
+        const claude = data.claude ? "configurato" : "non configurato";
+        const voce = Riconoscimento ? "microfono pronto" : "microfono non disponibile";
+        const sintesi = window.speechSynthesis ? "sintesi italiana pronta" : "sintesi non disponibile";
+        stato.textContent = `Vault: ${data.vaultPath}. Claude: ${claude}. Voce: ${voce}, ${sintesi}.`;
+      })
+      .catch(() => {
+        stato.textContent = "Stato del vault non disponibile.";
+      });
+  </script>
+</body>
+</html>
