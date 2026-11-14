@@ -31,7 +31,8 @@ export function messaggioUtente(query, notes) {
   return [`Richiesta: ${query}`, "", ...blocchi].join("\n");
 }
 
-export function richiestaClaude({ apiKey, model, query, notes, system = RUOLO, contenuto, maxTokens = 1200 }) {
+export function richiestaClaude({ apiKey, model, query, notes, system = RUOLO, contenuto, maxTokens = 1200, messages }) {
+  const messaggi = messages ?? [{ role: "user", content: contenuto ?? messaggioUtente(query, notes) }];
   return {
     url: ANTHROPIC_MESSAGES_URL,
     init: {
@@ -46,7 +47,7 @@ export function richiestaClaude({ apiKey, model, query, notes, system = RUOLO, c
         max_tokens: maxTokens,
         temperature: 0,
         system,
-        messages: [{ role: "user", content: contenuto ?? messaggioUtente(query, notes) }],
+        messages: messaggi,
       }),
     },
   };
@@ -65,8 +66,8 @@ export function testoRisposta(payload) {
   return text;
 }
 
-export async function chiamaClaude({ apiKey, model, query, notes, fetchImpl = fetch, system, contenuto, maxTokens }) {
-  const { url, init } = richiestaClaude({ apiKey, model, query, notes, system, contenuto, maxTokens });
+export async function chiamaClaude({ apiKey, model, query, notes, fetchImpl = fetch, system, contenuto, maxTokens, messages }) {
+  const { url, init } = richiestaClaude({ apiKey, model, query, notes, system, contenuto, maxTokens, messages });
   const response = await fetchImpl(url, init);
   const raw = await response.text();
   let payload = null;

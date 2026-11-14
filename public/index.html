@@ -23,20 +23,39 @@
       background: var(--carta);
       color: var(--ink);
     }
-    header, footer {
-      padding: 1.25rem 1.5rem 0;
-    }
-    h1 {
-      margin: 0;
-      font-size: 1.75rem;
-      font-weight: 600;
-    }
-    header p, footer {
+    header, footer { padding: 1.25rem 1.5rem 0; }
+    h1 { margin: 0; font-size: 1.75rem; font-weight: 600; }
+    header p, footer, .nota {
       margin: 0.35rem 0 0;
       color: var(--muto);
       font-family: ui-sans-serif, system-ui, sans-serif;
       font-size: 0.95rem;
     }
+    details {
+      margin: 1rem 1.5rem 0;
+      background: var(--pannello);
+      border: 1px solid var(--linea);
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    summary { cursor: pointer; font-weight: 600; }
+    .campi {
+      display: grid;
+      gap: 0.6rem;
+      margin-top: 0.75rem;
+    }
+    label { display: grid; gap: 0.3rem; font-size: 0.95rem; }
+    input[type="text"], textarea {
+      width: 100%;
+      border: 1px solid var(--linea);
+      border-radius: 8px;
+      padding: 0.75rem;
+      font: 1rem/1.45 ui-sans-serif, system-ui, sans-serif;
+      color: var(--ink);
+      background: #fff;
+    }
+    #istruzioni { min-height: 5rem; resize: vertical; }
     main {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -52,25 +71,13 @@
       display: flex;
       flex-direction: column;
     }
-    h2 {
-      margin: 0 0 0.75rem;
-      font-size: 1.15rem;
-    }
-    textarea {
-      width: 100%;
-      flex: 1;
-      min-height: 16rem;
-      resize: vertical;
-      border: 1px solid var(--linea);
-      border-radius: 8px;
-      padding: 0.75rem;
-      font: 1rem/1.45 ui-sans-serif, system-ui, sans-serif;
-      color: var(--ink);
-      background: #fff;
-    }
+    h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
+    #alimenti { flex: 1; min-height: 16rem; resize: vertical; }
+    .azioni, .risposta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+    .risposta { display: none; }
+    .risposta.attivo { display: flex; }
+    .risposta input { flex: 1; min-width: 12rem; }
     button {
-      margin-top: 0.75rem;
-      align-self: flex-start;
       border: 0;
       border-radius: 999px;
       padding: 0.65rem 1.1rem;
@@ -79,6 +86,8 @@
       font: 600 1rem/1 ui-sans-serif, system-ui, sans-serif;
       cursor: pointer;
     }
+    button.secondario { background: transparent; color: var(--accento); border: 1px solid var(--accento); }
+    button[aria-pressed="true"] { background: #5c2414; }
     button:disabled { opacity: 0.6; cursor: wait; }
     #menu {
       flex: 1;
@@ -92,49 +101,176 @@
     @media (max-width: 800px) {
       main { grid-template-columns: 1fr; }
       section { min-height: 0; }
-      textarea { min-height: 10rem; }
+      #alimenti { min-height: 10rem; }
     }
   </style>
 </head>
 <body>
   <header>
     <h1>Menù dagli alimenti</h1>
-    <p>Claude compone il menù solo con le note del vault Cucina Italiana.</p>
+    <p>Assistente vocale. Se il riquadro è vuoto, Claude chiede pranzo, cena e gli altri pasti. Poi il menù usa solo le note del vault.</p>
   </header>
+  <details id="impostazioni">
+    <summary>Impostazioni</summary>
+    <div class="campi">
+      <label>Nome dell'agente
+        <input id="nome" type="text" maxlength="80" autocomplete="off">
+      </label>
+      <label>Istruzioni fisse
+        <textarea id="istruzioni" maxlength="2000"></textarea>
+      </label>
+      <p class="nota">Restano in questo browser. Claude ne tiene conto in ogni risposta. La chiave non si salva qui.</p>
+    </div>
+  </details>
   <main>
     <section>
       <h2><label for="alimenti">Alimenti</label></h2>
       <textarea id="alimenti" placeholder="guanciale, pecorino, uova"></textarea>
-      <button id="crea" type="button">Crea il menù</button>
+      <div class="azioni">
+        <button id="crea" type="button">Crea il menù</button>
+        <button id="parla" class="secondario" type="button" aria-pressed="false">Parla</button>
+      </div>
     </section>
     <section>
       <h2>Menù</h2>
+      <div id="risposta-riga" class="risposta">
+        <input id="risposta" type="text" placeholder="Rispondi a voce o scrivi" autocomplete="off">
+        <button id="invia" type="button">Invia</button>
+      </div>
       <p id="menu" class="vuoto" aria-live="polite">Il menù comparirà qui, costruito solo con le note del vault.</p>
     </section>
   </main>
   <footer id="stato"></footer>
   <script>
+    const CHIAVE = "cucina-italiana-impostazioni";
+    const PREDEFINITO = {
+      nome: "Claude",
+      istruzioni: "Presentati come agente AI e indica il tuo nome.",
+    };
+
     const alimenti = document.querySelector("#alimenti");
     const crea = document.querySelector("#crea");
+    const parlaBtn = document.querySelector("#parla");
     const menu = document.querySelector("#menu");
     const stato = document.querySelector("#stato");
+    const nome = document.querySelector("#nome");
+    const istruzioni = document.querySelector("#istruzioni");
+    const rispostaRiga = document.querySelector("#risposta-riga");
+    const risposta = document.querySelector("#risposta");
+    const invia = document.querySelector("#invia");
+
+    let messaggi = [];
+    let inDialogo = false;
+    let ascolto = null;
+
+    function leggiImpostazioni() {
+      try {
+        const salvate = JSON.parse(localStorage.getItem(CHIAVE) || "null");
+        return {
+          nome: String(salvate?.nome ?? PREDEFINITO.nome).trim() || PREDEFINITO.nome,
+          istruzioni: String(salvate?.istruzioni ?? PREDEFINITO.istruzioni),
+        };
+      } catch {
+        return { ...PREDEFINITO };
+      }
+    }
+
+    function mostraImpostazioni() {
+      const dati = leggiImpostazioni();
+      nome.value = dati.nome;
+      istruzioni.value = dati.istruzioni;
+    }
+
+    function impostazioniAttuali() {
+      return {
+        nome: nome.value.trim() || PREDEFINITO.nome,
+        istruzioni: istruzioni.value.trim(),
+      };
+    }
+
+    function salvaImpostazioni() {
+      localStorage.setItem(CHIAVE, JSON.stringify(impostazioniAttuali()));
+    }
 
     function mostra(testo, classe) {
       menu.textContent = testo;
       menu.className = classe;
     }
 
+    function parla(testo) {
+      const synth = window.speechSynthesis;
+      if (!synth || !testo) return;
+      const dici = () => {
+        synth.cancel();
+        const frase = new SpeechSynthesisUtterance(testo);
+        frase.lang = "it-IT";
+        const voce = synth.getVoices().find((item) => /^it/i.test(item.lang || ""));
+        if (voce) frase.voice = voce;
+        synth.speak(frase);
+      };
+      if (synth.getVoices().length === 0) {
+        synth.addEventListener("voiceschanged", dici, { once: true });
+        return;
+      }
+      dici();
+    }
+
+    function trascrizione() {
+      return messaggi.map((msg) => `${msg.role === "user" ? "Tu" : "Claude"}: ${msg.content}`).join("\n\n");
+    }
+
+    function dialogoAperto(aperto) {
+      inDialogo = aperto;
+      rispostaRiga.classList.toggle("attivo", aperto);
+    }
+
+    async function chiedi(path, body) {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...body, impostazioni: impostazioniAttuali() }),
+      });
+      return response.json();
+    }
+
+    async function cerca() {
+      dialogoAperto(false);
+      messaggi = [];
+      mostra("Cerco nel vault…", "");
+      const data = await chiedi("/api/menu", { alimenti: alimenti.value });
+      mostra(data.text || "Nessuna risposta.", data.kind === "errore" ? "errore" : "");
+      parla(data.voce || data.text);
+    }
+
+    async function turno(testoUtente) {
+      if (testoUtente) messaggi.push({ role: "user", content: testoUtente });
+      mostra("Claude sta rispondendo…", "");
+      const data = await chiedi("/api/dialogo", { messaggi });
+      const detto = data.testo || data.text || "Nessuna risposta.";
+      if (data.stato === "definitivo" && data.alimenti) {
+        messaggi.push({ role: "assistant", content: detto });
+        alimenti.value = data.alimenti;
+        dialogoAperto(false);
+        mostra(`${trascrizione()}\n\nCerco nel vault…`, "");
+        parla(data.voce || detto);
+        const menuData = await chiedi("/api/menu", { alimenti: data.alimenti });
+        mostra(`${trascrizione()}\n\n${menuData.text || ""}`, menuData.kind === "errore" ? "errore" : "");
+        parla(menuData.voce || menuData.text);
+        return;
+      }
+      messaggi.push({ role: "assistant", content: detto });
+      dialogoAperto(true);
+      mostra(trascrizione(), data.kind === "errore" ? "errore" : "");
+      parla(data.voce || detto);
+      risposta.focus();
+    }
+
     crea.addEventListener("click", async () => {
       crea.disabled = true;
-      mostra("Cerco nel vault…", "");
       try {
-        const response = await fetch("/api/menu", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ alimenti: alimenti.value }),
-        });
-        const data = await response.json();
-        mostra(data.text || "Nessuna risposta.", data.kind === "errore" ? "errore" : "");
+        if (alimenti.value.trim()) await cerca();
+        else if (!inDialogo) await turno();
+        else risposta.focus();
       } catch {
         mostra("Non riesco a parlare con il server.", "errore");
       } finally {
@@ -142,11 +278,85 @@
       }
     });
 
+    invia.addEventListener("click", async () => {
+      const testo = risposta.value.trim();
+      if (!testo) return;
+      risposta.value = "";
+      invia.disabled = true;
+      try {
+        if (alimenti.value.trim()) await cerca();
+        else await turno(testo);
+      } catch {
+        mostra("Non riesco a parlare con il server.", "errore");
+      } finally {
+        invia.disabled = false;
+      }
+    });
+
+    risposta.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") invia.click();
+    });
+
+    function fermaAscolto() {
+      if (ascolto) ascolto.stop();
+      ascolto = null;
+      parlaBtn.setAttribute("aria-pressed", "false");
+      parlaBtn.textContent = "Parla";
+    }
+
+    const Riconoscimento = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Riconoscimento) {
+      parlaBtn.disabled = true;
+      parlaBtn.title = "Il riconoscimento vocale non è disponibile in questo browser. Puoi scrivere.";
+    } else {
+      parlaBtn.addEventListener("click", () => {
+        if (ascolto) {
+          fermaAscolto();
+          return;
+        }
+        const riconoscimento = new Riconoscimento();
+        riconoscimento.lang = "it-IT";
+        riconoscimento.interimResults = false;
+        ascolto = riconoscimento;
+        parlaBtn.setAttribute("aria-pressed", "true");
+        parlaBtn.textContent = "Stop";
+        riconoscimento.onresult = (event) => {
+          const testo = event.results[0][0].transcript.trim();
+          if (inDialogo || !alimenti.value.trim()) {
+            risposta.value = testo;
+            invia.click();
+          } else {
+            alimenti.value = `${alimenti.value.trim()} ${testo}`.trim();
+          }
+        };
+        riconoscimento.onerror = () => {
+          mostra("Non ho capito il microfono. Puoi scrivere.", "errore");
+        };
+        riconoscimento.onend = () => {
+          ascolto = null;
+          parlaBtn.setAttribute("aria-pressed", "false");
+          parlaBtn.textContent = "Parla";
+        };
+        riconoscimento.start();
+      });
+    }
+
+    for (const campo of [nome, istruzioni]) {
+      campo.addEventListener("change", salvaImpostazioni);
+    }
+    mostraImpostazioni();
+
+    if (window.speechSynthesis) {
+      window.speechSynthesis.addEventListener("voiceschanged", () => {});
+    }
+
     fetch("/api/stato")
       .then((response) => response.json())
       .then((data) => {
         const claude = data.claude ? "configurato" : "non configurato";
-        stato.textContent = `Vault: ${data.vaultPath}. Claude: ${claude}.`;
+        const voce = Riconoscimento ? "microfono pronto" : "microfono non disponibile";
+        const sintesi = window.speechSynthesis ? "sintesi italiana pronta" : "sintesi non disponibile";
+        stato.textContent = `Vault: ${data.vaultPath}. Claude: ${claude}. Voce: ${voce}, ${sintesi}.`;
       })
       .catch(() => {
         stato.textContent = "Stato del vault non disponibile.";

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { turnoDialogo } from "./dialogo.mjs";
 import { caricaEnvLocal } from "./env.mjs";
 import { componiMenu } from "./menu.mjs";
 import { DEFAULT_VAULT_PATH } from "./vault.mjs";
@@ -16,7 +17,7 @@ function leggiCorpo(req) {
     let size = 0;
     req.on("data", (chunk) => {
       size += chunk.length;
-      if (size > 20_000) {
+      if (size > 80_000) {
         reject(Object.assign(new Error("Testo troppo lungo."), { code: "TROPPO" }));
         req.destroy();
         return;
@@ -50,21 +51,34 @@ export function creaServer({ vaultPath, env = process.env, fetchImpl } = {}) {
       }), "application/json; charset=utf-8");
       return;
     }
-    if (req.method === "POST" && url.pathname === "/api/menu") {
+    if (req.method === "POST" && (url.pathname === "/api/menu" || url.pathname === "/api/dialogo")) {
       try {
         const raw = await leggiCorpo(req);
         const payload = raw ? JSON.parse(raw) : {};
-        const result = await componiMenu({
-          vaultPath,
-          alimenti: payload.alimenti,
-          env,
-          fetchImpl,
-        });
+        const result = url.pathname === "/api/dialogo"
+          ? await turnoDialogo({
+            messaggi: payload.messaggi,
+            impostazioni: payload.impostazioni,
+            env,
+            fetchImpl,
+          })
+          : await componiMenu({
+            vaultPath,
+            alimenti: payload.alimenti,
+            impostazioni: payload.impostazioni,
+            env,
+            fetchImpl,
+          });
+        const notes = (result.notes ?? []).map((note) => ({ title: note.title, rel: note.rel }));
         invia(res, result.ok ? 200 : 422, JSON.stringify({
           ok: result.ok,
           kind: result.kind,
-          text: result.text,
-          notes: result.notes.map((note) => ({ title: note.title, rel: note.rel })),
+          stato: result.stato ?? null,
+          text: result.text ?? result.testo,
+          testo: result.testo ?? result.text,
+          voce: result.voce ?? result.testo ?? result.text,
+          alimenti: result.alimenti ?? "",
+          notes,
         }), "application/json; charset=utf-8");
       } catch (error) {
         const message = error?.code === "TROPPO" || error instanceof SyntaxError

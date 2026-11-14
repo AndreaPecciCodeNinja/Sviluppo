@@ -1,5 +1,6 @@
 import { chiamaClaude } from "./claude.mjs";
 import { elencoTitoli } from "./agent.mjs";
+import { bloccoImpostazioni } from "./impostazioni.mjs";
 import { eTestoStorico } from "./search.mjs";
 import { caricaNote, normalizza } from "./vault.mjs";
 
@@ -104,7 +105,7 @@ function messaggioMenu(alimenti, notes) {
   return [`Alimenti disponibili: ${alimenti.join(", ")}`, "", ...blocchi].join("\n");
 }
 
-export async function componiMenu({ vaultPath, alimenti, env = process.env, fetchImpl, notes }) {
+export async function componiMenu({ vaultPath, alimenti, impostazioni, env = process.env, fetchImpl, notes }) {
   const lista = estraiAlimenti(alimenti);
   if (lista.length === 0) {
     return {
@@ -112,6 +113,7 @@ export async function componiMenu({ vaultPath, alimenti, env = process.env, fetc
       kind: "vuota",
       notes: [],
       text: "Scrivi gli alimenti che hai, separati da virgole.",
+      voce: "Scrivi gli alimenti che hai, separati da virgole.",
     };
   }
 
@@ -121,7 +123,7 @@ export async function componiMenu({ vaultPath, alimenti, env = process.env, fetc
       tutte = await caricaNote(vaultPath);
     } catch (error) {
       if (error?.code === "VAULT_ASSENTE") {
-        return { ok: false, kind: "vault", notes: [], text: error.message };
+        return { ok: false, kind: "vault", notes: [], text: error.message, voce: error.message };
       }
       throw error;
     }
@@ -138,15 +140,19 @@ export async function componiMenu({ vaultPath, alimenti, env = process.env, fetc
       kind: "assente",
       notes: [],
       text: `Nel vault non ci sono piatti per questi alimenti: ${lista.join(", ")}.`,
+      voce: `Nel vault non ci sono piatti per questi alimenti: ${lista.join(", ")}.`,
     };
   }
 
   const apiKey = env.ANTHROPIC_API_KEY?.trim() ?? "";
+  const titoli = trovate.map((note) => note.title).join(", ");
   if (!apiKey) {
+    const voce = `Claude non è configurato. Note trovate: ${titoli}.`;
     return {
       ok: true,
       kind: "senza-chiave",
       notes: trovate,
+      voce,
       text: [
         "Claude non è configurato: manca ANTHROPIC_API_KEY.",
         "Note trovate nel vault per questi alimenti:",
@@ -160,7 +166,7 @@ export async function componiMenu({ vaultPath, alimenti, env = process.env, fetc
     model: env.ANTHROPIC_MODEL,
     notes: trovate,
     fetchImpl,
-    system: RUOLO_MENU,
+    system: `${RUOLO_MENU} ${bloccoImpostazioni(impostazioni)}`,
     contenuto: messaggioMenu(lista, trovate),
     maxTokens: 1600,
   });
@@ -168,6 +174,7 @@ export async function componiMenu({ vaultPath, alimenti, env = process.env, fetc
     ok: true,
     kind: "risposta",
     notes: trovate,
+    voce: reply,
     text: ["Note usate:", elencoTitoli(trovate), "", reply].join("\n"),
   };
 }
