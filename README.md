@@ -12,7 +12,7 @@ npm run ricetta -- "cacio e pepe"
 
 La chiave sta in `ANTHROPIC_API_KEY`. All'avvio, se c'è un file `.env.local` nella radice del progetto, le variabili che non sono già nell'ambiente vengono lette da lì. Una variabile già impostata non viene sovrascritta. `.env.local` è in `.gitignore`: non va committato. Senza chiave il comando cerca comunque le note, dice che Claude non è configurato ed elenca i titoli trovati. Se il piatto non è nel vault, lo dice e non inventa la ricetta.
 
-`ANTHROPIC_MODEL` cambia il modello. Il default è `claude-3-5-sonnet-latest`.
+`ANTHROPIC_MODEL` cambia il modello. Il default è `claude-sonnet-4-5`.
 
 ```bash
 npm test

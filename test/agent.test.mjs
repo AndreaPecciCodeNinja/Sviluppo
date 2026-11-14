@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { rispondi } from "../src/agent.mjs";
 import { caricaEnvLocal } from "../src/env.mjs";
-import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_VERSION, richiestaClaude } from "../src/claude.mjs";
+import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_VERSION, DEFAULT_MODEL, richiestaClaude } from "../src/claude.mjs";
 import { cercaNote } from "../src/search.mjs";
 import { DEFAULT_VAULT_PATH, caricaNote } from "../src/vault.mjs";
 
@@ -65,6 +65,8 @@ test("la richiesta a Claude usa endpoint e header di YOLO, la chiave non finisce
   assert.equal(init.headers["x-api-key"], "sk-ant-segreto");
   assert.equal(init.headers["anthropic-version"], ANTHROPIC_VERSION);
   assert.equal(init.body.includes("sk-ant-segreto"), false);
+  assert.equal(DEFAULT_MODEL, "claude-sonnet-4-5");
+  assert.equal(JSON.parse(init.body).model, "claude-sonnet-4-5");
   assert.match(init.body, /solo pepe/);
   assert.match(init.body, /agente ricette della cucina italiana/);
 });
