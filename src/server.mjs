@@ -59,6 +59,7 @@ export function creaServer({ vaultPath, env = process.env, fetchImpl } = {}) {
           ? await turnoDialogo({
             messaggi: payload.messaggi,
             impostazioni: payload.impostazioni,
+            canale: payload.canale,
             env,
             fetchImpl,
           })
@@ -76,7 +77,8 @@ export function creaServer({ vaultPath, env = process.env, fetchImpl } = {}) {
           stato: result.stato ?? null,
           text: result.text ?? result.testo,
           testo: result.testo ?? result.text,
-          voce: result.voce ?? result.testo ?? result.text,
+          voce: result.voce ?? "",
+          parla: result.parla !== false && Boolean(result.voce),
           alimenti: result.alimenti ?? "",
           notes,
         }), "application/json; charset=utf-8");

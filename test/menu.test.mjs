@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { DEFAULT_MODEL } from "../src/claude.mjs";
-import { analizzaTurno, turnoDialogo } from "../src/dialogo.mjs";
+import { turnoDialogo } from "../src/dialogo.mjs";
 import { estraiAlimenti, cercaPiatti, componiMenu, RUOLO_MENU } from "../src/menu.mjs";
 import { creaServer } from "../src/server.mjs";
 import { DEFAULT_VAULT_PATH, caricaNote } from "../src/vault.mjs";
@@ -91,7 +91,9 @@ test("il server mostra i due riquadri e risponde agli alimenti", async () => {
     const chiacchiere = await dialogo.json();
     assert.equal(chiacchiere.kind, "senza-chiave");
     assert.equal(chiacchiere.stato, "domanda");
-    assert.match(chiacchiere.voce, /non è configurato/);
+    assert.equal(chiacchiere.parla, false);
+    assert.match(chiacchiere.testo, /non è configurato/);
+    assert.match(chiacchiere.testo, /[Ss]crivi/);
     assert.equal(chiacchiere.notes.length, 0);
     const response = await fetch(`http://127.0.0.1:${port}/api/menu`, {
       method: "POST",
@@ -120,41 +122,85 @@ test("il dialogo senza chiave non chiama Claude e non cerca nel vault", async ()
   });
   assert.equal(called, false);
   assert.equal(result.stato, "domanda");
-  assert.match(result.voce, /non è configurato/);
+  assert.equal(result.parla, false);
+  assert.equal(result.voce, "");
+  assert.match(result.testo, /[Ss]crivi/);
 });
 
-test("il dialogo definitivo rispetta il nome e chiude solo con gli alimenti", async () => {
-  const chiuso = await turnoDialogo({
-    messaggi: [{ role: "user", content: "Pranzo e cena: uova e pecorino. La lista è chiusa." }],
+test("«aiutami a preparare cena» è una richiesta, non un elenco", async () => {
+  const { èRichiesta } = await import("../src/dialogo.mjs");
+  assert.equal(èRichiesta("aiutami a preparare cena"), true);
+  assert.equal(èRichiesta("pecorino, uova, guanciale"), false);
+});
+
+test("il dialogo scritto fa una domanda, poi conferma i quattro alimenti, e cerca solo al sì", async () => {
+  const { èRichiesta: richiesta } = await import("../src/dialogo.mjs");
+  assert.equal(richiesta("aiutami a preparare cena"), true);
+  let viste = 0;
+  const prima = await turnoDialogo({
+    canale: "scritto",
+    messaggi: [{ role: "user", content: "aiutami a preparare cena" }],
     impostazioni: { nome: "Cuoco", istruzioni: "Presentati come agente AI e indica il tuo nome." },
     env: { ANTHROPIC_API_KEY: "sk-test" },
     async fetchImpl(_url, init) {
+      viste += 1;
       const body = JSON.parse(init.body);
-      assert.match(body.system, /assistente vocale/);
-      assert.match(body.system, /pranzo/);
+      assert.match(body.system, /una sola domanda/);
+      assert.match(body.system, /scrivi/);
       assert.match(body.system, /Il tuo nome è Cuoco/);
-      assert.match(body.system, /agente AI/);
+      assert.match(body.messages.map((msg) => msg.content).join("\n"), /aiutami a preparare cena/);
       return new Response(JSON.stringify({
-        content: [{ type: "text", text: '{"stato":"definitivo","testo":"Lista chiusa.","alimenti":"uova, pecorino"}' }],
+        content: [{ type: "text", text: '{"testo":"Che cosa hai per cena? E per pranzo?"}' }],
       }), { status: 200 });
     },
   });
-  assert.equal(chiuso.stato, "definitivo");
-  assert.equal(chiuso.alimenti, "uova, pecorino");
-  assert.equal(chiuso.voce, "Lista chiusa.");
+  assert.equal(prima.stato, "domanda");
+  assert.equal(prima.parla, false);
+  assert.equal(prima.voce, "");
+  assert.equal((prima.testo.match(/\?/g) || []).length, 1);
+  assert.match(prima.testo, /\bscrivi\b/i);
 
-  const vuoto = analizzaTurno('```json\n{"stato":"definitivo","testo":"Manca la lista.","alimenti":""}\n```');
-  assert.equal(vuoto.stato, "definitivo");
-  const tenuto = await turnoDialogo({
-    messaggi: [{ role: "user", content: "basta" }],
+  const quattro = [
+    { role: "user", content: "aiutami a preparare cena" },
+    { role: "assistant", content: prima.testo },
+    { role: "user", content: "uova, pecorino, guanciale e pomodoro" },
+  ];
+  const conferma = await turnoDialogo({
+    canale: "scritto",
+    messaggi: quattro,
+    impostazioni: { nome: "Cuoco", istruzioni: "Presentati come agente AI e indica il tuo nome." },
     env: { ANTHROPIC_API_KEY: "sk-test" },
     async fetchImpl() {
       return new Response(JSON.stringify({
-        content: [{ type: "text", text: '{"stato":"definitivo","testo":"Manca la lista.","alimenti":""}' }],
+        content: [{ type: "text", text: '{"testo":"Va bene cosi?"}' }],
       }), { status: 200 });
     },
   });
-  assert.equal(tenuto.stato, "domanda");
+  assert.equal(conferma.stato, "domanda");
+  assert.equal(conferma.parla, false);
+  assert.match(conferma.testo, /Cuoco, agente AI/);
+  assert.match(conferma.testo, /\bscrivi\b/i);
+  assert.match(conferma.testo, /quelli giusti/i);
+  assert.equal((conferma.testo.match(/\?/g) || []).length, 1);
+  for (const alimento of ["uova", "pecorino", "guanciale", "pomodoro"]) {
+    assert.match(conferma.testo, new RegExp(alimento));
+  }
+
+  let chiamato = false;
+  const si = await turnoDialogo({
+    canale: "scritto",
+    messaggi: [...quattro, { role: "assistant", content: conferma.testo }, { role: "user", content: "sì" }],
+    env: { ANTHROPIC_API_KEY: "sk-test" },
+    fetchImpl() {
+      chiamato = true;
+      throw new Error("non deve chiamare il modello dopo il sì");
+    },
+  });
+  assert.equal(chiamato, false);
+  assert.equal(si.stato, "definitivo");
+  assert.equal(si.parla, false);
+  assert.match(si.alimenti, /uova/);
+  assert.equal(viste > 0, true);
 });
 
 test("nel vault vero guanciale, uova e pecorino portano alla carbonara", async () => {

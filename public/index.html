@@ -108,7 +108,7 @@
 <body>
   <header>
     <h1>Menù dagli alimenti</h1>
-    <p>Assistente vocale. Se il riquadro è vuoto, Claude chiede pranzo, cena e gli altri pasti. Poi il menù usa solo le note del vault.</p>
+    <p>Se scrivi «aiutami a preparare cena», la risposta resta in questo riquadro: una domanda alla volta. Il menù, solo con le note del vault, parte dopo il sì su almeno quattro alimenti.</p>
   </header>
   <details id="impostazioni">
     <summary>Impostazioni</summary>
@@ -233,44 +233,61 @@
       return response.json();
     }
 
-    async function cerca() {
+    function èRichiesta(testo) {
+      const raw = testo.trim();
+      if (!raw || raw.includes(",")) return false;
+      return /aiut|prepar|vorrei|fammi|men[uù]|\b(cena|pranzo|colazione)\b/i.test(raw);
+    }
+
+    function suona(data) {
+      if (!data || data.parla === false) return;
+      parla(data.voce || data.testo || data.text);
+    }
+
+    async function cerca(canale) {
       dialogoAperto(false);
+      const giaDetti = messaggi.slice();
       messaggi = [];
       mostra("Cerco nel vault…", "");
       const data = await chiedi("/api/menu", { alimenti: alimenti.value });
-      mostra(data.text || "Nessuna risposta.", data.kind === "errore" ? "errore" : "");
-      parla(data.voce || data.text);
+      const testo = data.text || "Nessuna risposta.";
+      const prima = giaDetti.map((msg) => `${msg.role === "user" ? "Tu" : "Claude"}: ${msg.content}`).join("\n\n");
+      mostra(prima ? `${prima}\n\n${testo}` : testo, data.kind === "errore" ? "errore" : "");
+      if (canale === "voce") suona(data);
     }
 
-    async function turno(testoUtente) {
+    async function turno(testoUtente, canale) {
       if (testoUtente) messaggi.push({ role: "user", content: testoUtente });
-      mostra("Claude sta rispondendo…", "");
-      const data = await chiedi("/api/dialogo", { messaggi });
+      mostra(trascrizione() || "Claude sta scrivendo…", "");
+      const data = await chiedi("/api/dialogo", { messaggi, canale });
       const detto = data.testo || data.text || "Nessuna risposta.";
       if (data.stato === "definitivo" && data.alimenti) {
         messaggi.push({ role: "assistant", content: detto });
         alimenti.value = data.alimenti;
         dialogoAperto(false);
         mostra(`${trascrizione()}\n\nCerco nel vault…`, "");
-        parla(data.voce || detto);
+        if (canale === "voce") suona(data);
         const menuData = await chiedi("/api/menu", { alimenti: data.alimenti });
         mostra(`${trascrizione()}\n\n${menuData.text || ""}`, menuData.kind === "errore" ? "errore" : "");
-        parla(menuData.voce || menuData.text);
+        if (canale === "voce") suona(menuData);
         return;
       }
       messaggi.push({ role: "assistant", content: detto });
       dialogoAperto(true);
       mostra(trascrizione(), data.kind === "errore" ? "errore" : "");
-      parla(data.voce || detto);
+      if (canale === "voce") suona(data);
       risposta.focus();
     }
 
     crea.addEventListener("click", async () => {
       crea.disabled = true;
       try {
-        if (alimenti.value.trim()) await cerca();
-        else if (!inDialogo) await turno();
-        else risposta.focus();
+        const testo = alimenti.value.trim();
+        if (testo && !èRichiesta(testo)) await cerca("scritto");
+        else if (!inDialogo) {
+          if (èRichiesta(testo)) alimenti.value = "";
+          await turno(testo, "scritto");
+        } else risposta.focus();
       } catch {
         mostra("Non riesco a parlare con il server.", "errore");
       } finally {
@@ -284,8 +301,8 @@
       risposta.value = "";
       invia.disabled = true;
       try {
-        if (alimenti.value.trim()) await cerca();
-        else await turno(testo);
+        if (inDialogo || èRichiesta(testo) || !alimenti.value.trim()) await turno(testo, "scritto");
+        else await cerca("scritto");
       } catch {
         mostra("Non riesco a parlare con il server.", "errore");
       } finally {
@@ -322,9 +339,9 @@
         parlaBtn.textContent = "Stop";
         riconoscimento.onresult = (event) => {
           const testo = event.results[0][0].transcript.trim();
-          if (inDialogo || !alimenti.value.trim()) {
-            risposta.value = testo;
-            invia.click();
+          if (inDialogo || !alimenti.value.trim() || èRichiesta(testo)) {
+            risposta.value = "";
+            turno(testo, "voce");
           } else {
             alimenti.value = `${alimenti.value.trim()} ${testo}`.trim();
           }

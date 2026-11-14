@@ -14,7 +14,7 @@ La chiave sta in `ANTHROPIC_API_KEY`. All'avvio, se c'è un file `.env.local` ne
 
 `ANTHROPIC_MODEL` cambia il modello. Il default è `claude-sonnet-4-5`.
 
-L'interfaccia a due riquadri (alimenti a sinistra, menù a destra) è anche un assistente vocale. Se il riquadro alimenti è vuoto, Claude chiede in italiano pranzo, cena e gli altri pasti finché la lista è chiusa, poi cerca nel vault. Se gli alimenti ci sono già, salta il dialogo. Nome e istruzioni fisse stanno nel browser (`localStorage`), non nel git: di default l'agente si presenta come AI e dice il suo nome.
+L'interfaccia a due riquadri (alimenti a sinistra, menù a destra) è anche un assistente. Se l'utente scrive «aiutami a preparare cena», la risposta resta nel riquadro, senza voce: una domanda alla volta, con la parola «scrivi», e il menù parte solo dopo il sì su almeno quattro alimenti. Un elenco già scritto nel riquadro cerca subito. Nome e istruzioni fisse stanno nel browser (`localStorage`), non nel git.
 
 ```bash
 npm run menu
