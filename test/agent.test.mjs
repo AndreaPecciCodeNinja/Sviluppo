@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { rispondi } from "../src/agent.mjs";
+import { caricaEnvLocal } from "../src/env.mjs";
 import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_VERSION, richiestaClaude } from "../src/claude.mjs";
 import { cercaNote } from "../src/search.mjs";
 import { DEFAULT_VAULT_PATH, caricaNote } from "../src/vault.mjs";
@@ -102,6 +103,18 @@ test("il vault vero risolve cacio e pepe e rifiuta un piatto inventato", async (
     env: { ANTHROPIC_API_KEY: "non-usata" },
   });
   assert.equal(missing.kind, "assente");
+});
+
+test(".env.local riempie solo le variabili assenti e non stampa il segreto", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "env-local-"));
+  const file = path.join(dir, ".env.local");
+  await writeFile(file, "# commento\n\nANTHROPIC_API_KEY=\"sk-dal-file\"\nANTHROPIC_MODEL=dal-file\nGIA=dal-file\n");
+  const env = { GIA: "gia-ambiente" };
+  assert.equal(await caricaEnvLocal(env, file), true);
+  assert.equal(env.ANTHROPIC_API_KEY, "sk-dal-file");
+  assert.equal(env.ANTHROPIC_MODEL, "dal-file");
+  assert.equal(env.GIA, "gia-ambiente");
+  assert.equal(await caricaEnvLocal(env, path.join(dir, "manca.env")), false);
 });
 
 test("vault mancante", async () => {
