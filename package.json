@@ -8,6 +8,7 @@
   },
   "scripts": {
     "ricetta": "node src/cli.mjs",
+    "menu": "node src/server.mjs",
     "test": "node --test"
   }
 }

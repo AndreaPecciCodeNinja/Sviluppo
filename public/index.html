@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Menù dagli alimenti</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --carta: #f4efe6;
+      --ink: #1d1914;
+      --muto: #5c5348;
+      --linea: #d9cfc0;
+      --pannello: #fffdf8;
+      --accento: #8c3d22;
+      --accento-ink: #fffaf6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+      background: var(--carta);
+      color: var(--ink);
+    }
+    header, footer {
+      padding: 1.25rem 1.5rem 0;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.75rem;
+      font-weight: 600;
+    }
+    header p, footer {
+      margin: 0.35rem 0 0;
+      color: var(--muto);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.95rem;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      padding: 1rem 1.5rem 1.5rem;
+    }
+    section {
+      background: var(--pannello);
+      border: 1px solid var(--linea);
+      border-radius: 12px;
+      padding: 1rem;
+      min-height: 24rem;
+      display: flex;
+      flex-direction: column;
+    }
+    h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.15rem;
+    }
+    textarea {
+      width: 100%;
+      flex: 1;
+      min-height: 16rem;
+      resize: vertical;
+      border: 1px solid var(--linea);
+      border-radius: 8px;
+      padding: 0.75rem;
+      font: 1rem/1.45 ui-sans-serif, system-ui, sans-serif;
+      color: var(--ink);
+      background: #fff;
+    }
+    button {
+      margin-top: 0.75rem;
+      align-self: flex-start;
+      border: 0;
+      border-radius: 999px;
+      padding: 0.65rem 1.1rem;
+      background: var(--accento);
+      color: var(--accento-ink);
+      font: 600 1rem/1 ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    #menu {
+      flex: 1;
+      margin: 0;
+      white-space: pre-wrap;
+      font: 1rem/1.5 ui-sans-serif, system-ui, sans-serif;
+    }
+    #menu.vuoto { color: var(--muto); }
+    #menu.errore { color: #7a2430; }
+    footer { padding-bottom: 1.5rem; }
+    @media (max-width: 800px) {
+      main { grid-template-columns: 1fr; }
+      section { min-height: 0; }
+      textarea { min-height: 10rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Menù dagli alimenti</h1>
+    <p>Claude compone il menù solo con le note del vault Cucina Italiana.</p>
+  </header>
+  <main>
+    <section>
+      <h2><label for="alimenti">Alimenti</label></h2>
+      <textarea id="alimenti" placeholder="guanciale, pecorino, uova"></textarea>
+      <button id="crea" type="button">Crea il menù</button>
+    </section>
+    <section>
+      <h2>Menù</h2>
+      <p id="menu" class="vuoto" aria-live="polite">Il menù comparirà qui, costruito solo con le note del vault.</p>
+    </section>
+  </main>
+  <footer id="stato"></footer>
+  <script>
+    const alimenti = document.querySelector("#alimenti");
+    const crea = document.querySelector("#crea");
+    const menu = document.querySelector("#menu");
+    const stato = document.querySelector("#stato");
+
+    function mostra(testo, classe) {
+      menu.textContent = testo;
+      menu.className = classe;
+    }
+
+    crea.addEventListener("click", async () => {
+      crea.disabled = true;
+      mostra("Cerco nel vault…", "");
+      try {
+        const response = await fetch("/api/menu", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ alimenti: alimenti.value }),
+        });
+        const data = await response.json();
+        mostra(data.text || "Nessuna risposta.", data.kind === "errore" ? "errore" : "");
+      } catch {
+        mostra("Non riesco a parlare con il server.", "errore");
+      } finally {
+        crea.disabled = false;
+      }
+    });
+
+    fetch("/api/stato")
+      .then((response) => response.json())
+      .then((data) => {
+        const claude = data.claude ? "configurato" : "non configurato";
+        stato.textContent = `Vault: ${data.vaultPath}. Claude: ${claude}.`;
+      })
+      .catch(() => {
+        stato.textContent = "Stato del vault non disponibile.";
+      });
+  </script>
+</body>
+</html>
