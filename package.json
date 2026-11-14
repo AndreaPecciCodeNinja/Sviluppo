@@ -1,0 +1,13 @@
+{
+  "name": "agente-ricette",
+  "private": true,
+  "type": "module",
+  "description": "Agente ricette della cucina italiana: legge un vault Obsidian e risponde con Claude.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "ricetta": "node src/cli.mjs",
+    "test": "node --test"
+  }
+}
