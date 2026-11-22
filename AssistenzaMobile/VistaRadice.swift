@@ -42,95 +42,100 @@ struct VistaRadice: View {
 private struct ContenutoPrincipale: View {
     @Environment(ArchivioLocale.self) private var archivio
     @Environment(SessioneTecnico.self) private var sessione
-    @State private var sezione: Sezione?
-    @State private var colonne: NavigationSplitViewVisibility = .all
+    @State private var sezione: Sezione? = .interventi
     @State private var interventoID: String?
     @State private var clienteID: String?
     @State private var ticketID: String?
+    @Environment(\.scenePhase) private var faseScena
+
+    private var sezioneVisibile: Sezione { sezione ?? .interventi }
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $colonne) {
-            BarraLaterale(sezione: $sezione)
-                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
-        } content: {
-            switch sezione ?? .interventi {
-            case .interventi:
-                VistaInterventi(selezione: $interventoID)
-            case .clienti:
-                VistaClienti(selezione: $clienteID)
-            case .ticket:
-                VistaTicket(selezione: $ticketID)
-            case .importazione:
-                VistaImportazione()
-            case .sincronizzazione:
-                VistaSincronizzazione()
+        HStack(spacing: 0) {
+            NavigationStack {
+                BarraLaterale(sezione: $sezione)
             }
-        } detail: {
-            switch sezione ?? .interventi {
-            case .interventi:
-                if let interventoID {
-                    DettaglioIntervento(id: interventoID, onApriCliente: apriCliente)
-                } else {
-                    SezioneVuota(
-                        titolo: "Seleziona un intervento",
-                        dettaglio: "I dettagli, lo stato e le note compaiono qui.",
-                        simbolo: "wrench.and.screwdriver"
-                    )
+            .frame(width: 300)
+
+            NavigationStack {
+                switch sezioneVisibile {
+                case .interventi:
+                    VistaInterventi(selezione: $interventoID)
+                case .clienti:
+                    VistaClienti(selezione: $clienteID)
+                case .ticket:
+                    VistaTicket(selezione: $ticketID)
+                case .importazione:
+                    VistaImportazione()
+                case .sincronizzazione:
+                    VistaSincronizzazione()
                 }
-            case .clienti:
-                if let clienteID {
-                    DettaglioCliente(
-                        id: clienteID,
-                        onApriIntervento: apriIntervento,
-                        onApriTicket: apriTicket
-                    )
-                } else {
-                    SezioneVuota(
-                        titolo: "Seleziona un cliente",
-                        dettaglio: "Qui trovi il referente, i contatti e i lavori assegnati.",
-                        simbolo: "person.2"
-                    )
-                }
-            case .ticket:
-                if let ticketID {
-                    DettaglioTicket(id: ticketID, onApriCliente: apriCliente)
-                } else {
-                    SezioneVuota(
-                        titolo: "Seleziona un ticket",
-                        dettaglio: "La richiesta e le risposte compaiono qui.",
-                        simbolo: "text.bubble"
-                    )
-                }
-            case .importazione:
-                ScrollView {
-                    GuidaImportazione()
-                }
-                .background(Color(.systemGroupedBackground))
-                .navigationTitle("Formato del file")
-                .navigationBarTitleDisplayMode(.inline)
-            case .sincronizzazione:
-                ScrollView {
-                    GuidaSincronizzazione()
-                }
-                .background(Color(.systemGroupedBackground))
-                .navigationTitle("Contratto con la demo")
-                .navigationBarTitleDisplayMode(.inline)
             }
+            .frame(minWidth: 340, maxWidth: .infinity, maxHeight: .infinity)
+
+            NavigationStack {
+                switch sezioneVisibile {
+                case .interventi:
+                    if let interventoID {
+                        DettaglioIntervento(id: interventoID, onApriCliente: apriCliente)
+                    } else {
+                        SezioneVuota(
+                            titolo: "Seleziona un intervento",
+                            dettaglio: "I dettagli, lo stato e le note compaiono qui.",
+                            simbolo: "wrench.and.screwdriver"
+                        )
+                    }
+                case .clienti:
+                    if let clienteID {
+                        DettaglioCliente(
+                            id: clienteID,
+                            onApriIntervento: apriIntervento,
+                            onApriTicket: apriTicket
+                        )
+                    } else {
+                        SezioneVuota(
+                            titolo: "Seleziona un cliente",
+                            dettaglio: "Qui trovi il referente, i contatti e i lavori assegnati.",
+                            simbolo: "person.2"
+                        )
+                    }
+                case .ticket:
+                    if let ticketID {
+                        DettaglioTicket(id: ticketID, onApriCliente: apriCliente)
+                    } else {
+                        SezioneVuota(
+                            titolo: "Seleziona un ticket",
+                            dettaglio: "La richiesta e le risposte compaiono qui.",
+                            simbolo: "text.bubble"
+                        )
+                    }
+                case .importazione:
+                    ScrollView {
+                        GuidaImportazione()
+                    }
+                    .background(Color(.systemGroupedBackground))
+                    .navigationTitle("Formato del file")
+                    .navigationBarTitleDisplayMode(.inline)
+                case .sincronizzazione:
+                    ScrollView {
+                        GuidaSincronizzazione()
+                    }
+                    .background(Color(.systemGroupedBackground))
+                    .navigationTitle("Contratto con la demo")
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemBackground))
         }
-        .navigationSplitViewStyle(.balanced)
-        .onAppear {
-            if sezione == nil {
-                sezione = .interventi
-            }
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
         .task { await ClienteServer.sincronizza(archivio: archivio, sessione: sessione) }
         .onChange(of: faseScena) { _, fase in
             guard fase == .active else { return }
             Task { await ClienteServer.sincronizza(archivio: archivio, sessione: sessione) }
         }
     }
-
-    @Environment(\.scenePhase) private var faseScena
 
     private func apriCliente(_ id: String) {
         clienteID = id
