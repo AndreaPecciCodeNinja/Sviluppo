@@ -5,6 +5,7 @@ enum Sezione: String, Hashable, Identifiable {
     case clienti
     case ticket
     case importazione
+    case sincronizzazione
 
     var id: String { rawValue }
 }
@@ -61,6 +62,8 @@ private struct ContenutoPrincipale: View {
                 VistaTicket(selezione: $ticketID)
             case .importazione:
                 VistaImportazione()
+            case .sincronizzazione:
+                VistaSincronizzazione()
             }
         } detail: {
             switch sezione ?? .interventi {
@@ -105,6 +108,13 @@ private struct ContenutoPrincipale: View {
                 .background(Color(.systemGroupedBackground))
                 .navigationTitle("Formato del file")
                 .navigationBarTitleDisplayMode(.inline)
+            case .sincronizzazione:
+                ScrollView {
+                    GuidaSincronizzazione()
+                }
+                .background(Color(.systemGroupedBackground))
+                .navigationTitle("Contratto con la demo")
+                .navigationBarTitleDisplayMode(.inline)
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -113,7 +123,14 @@ private struct ContenutoPrincipale: View {
                 sezione = .interventi
             }
         }
+        .task { await ClienteServer.sincronizza(archivio: archivio, sessione: sessione) }
+        .onChange(of: faseScena) { _, fase in
+            guard fase == .active else { return }
+            Task { await ClienteServer.sincronizza(archivio: archivio, sessione: sessione) }
+        }
     }
+
+    @Environment(\.scenePhase) private var faseScena
 
     private func apriCliente(_ id: String) {
         clienteID = id
@@ -166,6 +183,8 @@ private struct BarraLaterale: View {
             Section("Dati") {
                 Label("Importazione", systemImage: "square.and.arrow.down")
                     .tag(Sezione.importazione)
+                Label("Sincronizzazione", systemImage: "arrow.triangle.2.circlepath")
+                    .tag(Sezione.sincronizzazione)
             }
         }
         .listStyle(.sidebar)

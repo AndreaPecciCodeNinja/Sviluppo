@@ -28,6 +28,8 @@ final class ArchivioLocale {
     var ultimoEsito: EsitoImportazione?
     var ultimoErroreImportazione: String?
     var ultimoNomeFile: String?
+    var messaggioSincronizzazione: String?
+    var sincronizzazioneInCorso = false
 
     init(percorso: URL? = nil) {
         self.percorso = percorso ?? Self.percorsoPredefinito()
@@ -213,24 +215,49 @@ final class ArchivioLocale {
         salva()
     }
 
+    /// Lo stato scritto sull'iPad resta, anche se il server rimanda la scheda precedente.
+    func conservaStatoLocale(
+        interventi statiIntervento: [String: StatoIntervento],
+        ticket statiTicket: [String: StatoTicket]
+    ) {
+        var mutato = false
+        for indice in interventi.indices {
+            guard let stato = statiIntervento[interventi[indice].id], interventi[indice].stato != stato else { continue }
+            interventi[indice].stato = stato
+            mutato = true
+        }
+        for indice in ticket.indices {
+            guard let stato = statiTicket[ticket[indice].id], ticket[indice].stato != stato else { continue }
+            ticket[indice].stato = stato
+            mutato = true
+        }
+        if mutato { salva() }
+    }
+
     @discardableResult
-    func importa(dati: Data, nomeFile: String? = nil) -> Result<EsitoImportazione, Error> {
+    func importa(dati: Data, nomeFile: String? = nil, registraEsito: Bool = true) -> Result<EsitoImportazione, Error> {
         do {
             let esito = try ImportatoreJSON.applica(dati: dati, a: self)
-            ultimoEsito = esito
-            ultimoErroreImportazione = nil
-            ultimoNomeFile = nomeFile
+            if registraEsito {
+                ultimoEsito = esito
+                ultimoErroreImportazione = nil
+                ultimoNomeFile = nomeFile
+            }
             return .success(esito)
         } catch let errore as ErroreImportazione {
-            ultimoEsito = nil
-            ultimoErroreImportazione = errore.messaggio
-            ultimoNomeFile = nomeFile
+            if registraEsito {
+                ultimoEsito = nil
+                ultimoErroreImportazione = errore.messaggio
+                ultimoNomeFile = nomeFile
+            }
             return .failure(errore)
         } catch {
             let messaggio = "Impossibile leggere il file."
-            ultimoEsito = nil
-            ultimoErroreImportazione = messaggio
-            ultimoNomeFile = nomeFile
+            if registraEsito {
+                ultimoEsito = nil
+                ultimoErroreImportazione = messaggio
+                ultimoNomeFile = nomeFile
+            }
             return .failure(ErroreImportazione(messaggio: messaggio))
         }
     }

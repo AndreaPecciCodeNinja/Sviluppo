@@ -67,6 +67,17 @@ Il file può essere un oggetto con `tecnici`, `clienti` (oppure `utenti`), `inte
 
 Campi principali di un intervento: `titolo`, `logonTecnico`, `appuntamento` (ISO 8601), `clienteId` oppure un oggetto `cliente`, `stato` (`programmato`, `in_corso`, `in_attesa`, `completato`, `annullato`), `priorita` (`bassa`, `media`, `alta`, `urgente`), `note`.
 
+## Sincronizzazione con la demo
+
+La demo «Assistenza Tecnica Demo» non è in questo checkout né sugli altri branch del repository. L'app iPad usa comunque l'origine `http://127.0.0.1:3012` (porta 3012), modificabile in **Sincronizzazione**.
+
+All'apertura, e dal pulsante **Sincronizza con la demo**, l'iPad:
+
+1. `GET /api/tecnici/{logon}/assegnazioni` e importa il JSON (stesso formato dei file in `esempi/`). Lo stato e le note già scritti sull'iPad non vengono sostituiti.
+2. `POST /api/sincronizzazione` con il tecnico loggato, lo stato degli interventi, le note e le risposte dei ticket. Le date sono ISO 8601. La password non esce dall'iPad.
+
+Se il server non risponde, l'archivio locale resta e l'app si usa offline. Manca il sorgente del server: quelle due rotte vanno esposte dalla demo.
+
 ## Dati sul dispositivo
 
 L'archivio è un JSON nella cartella Application Support dell'app. Chiudere l'app e riaprirla, anche senza rete, conserva interventi, note, ticket e risposte.
