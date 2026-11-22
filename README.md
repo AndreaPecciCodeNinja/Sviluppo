@@ -75,7 +75,7 @@ Il server è in `demo-assistenza/`. I dati restano nel file locale `demo-assiste
 node demo-assistenza/server.mjs
 ```
 
-Poi apri http://127.0.0.1:3012/. La pagina elenca tecnici, interventi, ticket e gli invii arrivati dall'iPad.
+Poi apri http://127.0.0.1:3012/. Scegli l'operatore, per esempio Marco Bianchi. **Ticket da inviare** elenca solo i ticket ancora da mandare alla sua app. **Ticket ricevuti** elenca solo quelli arrivati dalla sua app. **Simula un ticket e invialo** ne crea uno di prova e lo mette in Ticket da inviare: l'iPad lo riceve alla sincronizzazione successiva, poi il ticket passa in Ticket ricevuti.
 
 Logon di prova, password `assistenza`: `marco.bianchi`, `lucia.ferrari`, `paolo.conti`.
 

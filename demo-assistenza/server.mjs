@@ -14,14 +14,6 @@ const PERCORSO_ARCHIVIO = join(CARTELLA_DATI, "archivio.json");
 const STATI_INTERVENTO = new Set(["programmato", "in_corso", "in_attesa", "completato", "annullato"]);
 const STATI_TICKET = new Set(["aperto", "in_lavorazione", "in_attesa_cliente", "risolto", "chiuso"]);
 
-const ETICHETTE_INTERVENTO = {
-  programmato: "Programmato",
-  in_corso: "In corso",
-  in_attesa: "In attesa",
-  completato: "Completato",
-  annullato: "Annullato",
-};
-
 const ETICHETTE_TICKET = {
   aperto: "Aperto",
   in_lavorazione: "In lavorazione",
@@ -35,7 +27,26 @@ const server = createServer(async (richiesta, risposta) => {
     const url = new URL(richiesta.url ?? "/", `http://${HOST}:${PORTA}`);
     if (richiesta.method === "GET" && url.pathname === "/") {
       const archivio = await carica();
-      return html(risposta, 200, pagina(archivio));
+      return html(risposta, 200, pagina(archivio, {
+        scheda: url.searchParams.get("scheda"),
+        operatore: url.searchParams.get("operatore"),
+        creato: url.searchParams.get("creato") === "1",
+      }));
+    }
+
+    if (richiesta.method === "POST" && url.pathname === "/ticket/simula") {
+      const campi = await leggiCampi(richiesta);
+      const archivio = await carica();
+      const tecnico = tecnicoDi(archivio, campi.operatore);
+      if (!tecnico) return json(risposta, 404, { errore: "Nessun operatore con questo logon." });
+      simulaTicket(archivio, tecnico);
+      await salva(archivio);
+      risposta.writeHead(303, {
+        Location: `/?scheda=da-inviare&operatore=${encodeURIComponent(tecnico.logon)}&creato=1`,
+        "Cache-Control": "no-store",
+      });
+      risposta.end();
+      return;
     }
 
     const assegnazioni = url.pathname.match(/^\/api\/tecnici\/([^/]+)\/assegnazioni$/);
@@ -44,7 +55,9 @@ const server = createServer(async (richiesta, risposta) => {
       const archivio = await carica();
       const tecnico = tecnicoDi(archivio, logon);
       if (!tecnico) return json(risposta, 404, { errore: "Nessun tecnico con questo logon." });
-      return json(risposta, 200, pacchettoAssegnazioni(archivio, tecnico.logon));
+      const pacchetto = pacchettoAssegnazioni(archivio, tecnico.logon);
+      if (segnaInviati(archivio, tecnico.logon)) await salva(archivio);
+      return json(risposta, 200, pacchetto);
     }
 
     if (richiesta.method === "POST" && url.pathname === "/api/sincronizzazione") {
@@ -107,7 +120,7 @@ function tecnicoDi(archivio, logonOId) {
 function pacchettoAssegnazioni(archivio, logon) {
   const tecnico = (archivio.tecnici ?? []).find((voce) => voce.logon === logon);
   const interventi = (archivio.interventi ?? []).filter((voce) => voce.logonTecnico === logon);
-  const ticket = (archivio.ticket ?? []).filter((voce) => voce.logonTecnico === logon);
+  const ticket = (archivio.ticket ?? []).filter((voce) => voce.logonTecnico === logon).map(ticketPerApp);
   const clientiId = new Set([
     ...(archivio.clienti ?? []).filter((voce) => voce.logonTecnico === logon).map((voce) => voce.id),
     ...interventi.map((voce) => voce.clienteId),
@@ -141,12 +154,24 @@ function applicaSincronizzazione(archivio, pacchetto) {
     record.note = unisciAnnotazioni(record.note, aggiornamento.note);
     interventiApplicati += 1;
   }
+  archivio.ticket = Array.isArray(archivio.ticket) ? archivio.ticket : [];
   for (const aggiornamento of pacchetto.ticket) {
-    const record = (archivio.ticket ?? []).find((voce) => voce.id === aggiornamento.id && voce.logonTecnico === tecnico.logon);
-    if (!record) continue;
-    if (STATI_TICKET.has(aggiornamento.stato)) record.stato = aggiornamento.stato;
-    if (aggiornamento.aggiornato) record.aggiornato = String(aggiornamento.aggiornato);
-    record.risposte = unisciAnnotazioni(record.risposte, aggiornamento.risposte);
+    const id = String(aggiornamento?.id ?? "").trim();
+    if (!id) continue;
+    let record = archivio.ticket.find((voce) => voce.id === id && voce.logonTecnico === tecnico.logon);
+    if (!record) {
+      record = ticketArrivato(archivio, tecnico, aggiornamento, id);
+      archivio.ticket.unshift(record);
+    } else {
+      const partitoDalServer = record.daInviare === true || Boolean(record.inviatoIl);
+      if (STATI_TICKET.has(aggiornamento.stato)) record.stato = aggiornamento.stato;
+      if (aggiornamento.aggiornato) record.aggiornato = String(aggiornamento.aggiornato);
+      record.risposte = unisciAnnotazioni(record.risposte, aggiornamento.risposte);
+      if (partitoDalServer) {
+        record.daInviare = false;
+        record.ricevutoIl = String(aggiornamento.aggiornato || pacchetto.inviato || new Date().toISOString());
+      }
+    }
     ticketApplicati += 1;
   }
 
@@ -180,6 +205,116 @@ function unisciAnnotazioni(esistenti, nuove) {
     else risultato.push(record);
   }
   return risultato.sort((a, b) => String(a.data).localeCompare(String(b.data)));
+}
+
+function simulaTicket(archivio, tecnico) {
+  const cliente = clienteDellOperatore(archivio, tecnico.logon);
+  const ora = new Date().toISOString();
+  const ticket = {
+    id: `tck-sim-${randomUUID().slice(0, 8)}`,
+    titolo: `Ticket di prova ${dataLeggibile(ora)}`,
+    descrizione: `Creato dalla demo per ${tecnico.nome}. Resta da inviare finché l'app non lo scarica.`,
+    clienteId: cliente.id,
+    logonTecnico: tecnico.logon,
+    stato: "aperto",
+    priorita: "media",
+    aperto: ora,
+    aggiornato: ora,
+    risposte: [],
+    daInviare: true,
+  };
+  archivio.ticket = Array.isArray(archivio.ticket) ? archivio.ticket : [];
+  archivio.ticket.unshift(ticket);
+  return ticket;
+}
+
+function ticketArrivato(archivio, tecnico, aggiornamento, id) {
+  const clienteId = String(aggiornamento.clienteId ?? "").trim();
+  const clienteNoto = (archivio.clienti ?? []).some((voce) => voce.id === clienteId);
+  const cliente = clienteNoto ? clienteId : clienteDellOperatore(archivio, tecnico.logon).id;
+  const ora = String(aggiornamento.aggiornato || new Date().toISOString());
+  const titolo = String(aggiornamento.titolo ?? "").trim() || "Ticket dall'app";
+  const record = {
+    id,
+    titolo,
+    descrizione: String(aggiornamento.descrizione ?? "").trim() || "Arrivato dall'app mobile.",
+    clienteId: cliente,
+    logonTecnico: tecnico.logon,
+    stato: STATI_TICKET.has(aggiornamento.stato) ? aggiornamento.stato : "aperto",
+    priorita: "media",
+    aperto: ora,
+    aggiornato: ora,
+    risposte: [],
+    daInviare: false,
+    ricevutoIl: ora,
+  };
+  record.risposte = unisciAnnotazioni([], aggiornamento.risposte);
+  return record;
+}
+
+function clienteDellOperatore(archivio, logon) {
+  const esistente = (archivio.clienti ?? []).find((voce) => voce.logonTecnico === logon);
+  if (esistente) return esistente;
+  const cliente = {
+    id: `cli-${logon.replace(/[^a-z0-9]+/gi, "-")}`,
+    nome: "Cliente di prova",
+    referente: "",
+    telefono: "",
+    email: "",
+    indirizzo: "",
+    logonTecnico: logon,
+  };
+  archivio.clienti = Array.isArray(archivio.clienti) ? archivio.clienti : [];
+  archivio.clienti.push(cliente);
+  return cliente;
+}
+
+function segnaInviati(archivio, logon) {
+  const ora = new Date().toISOString();
+  let mutato = false;
+  for (const ticket of archivio.ticket ?? []) {
+    if (ticket.logonTecnico !== logon || ticket.daInviare !== true) continue;
+    ticket.daInviare = false;
+    ticket.inviatoIl = ora;
+    mutato = true;
+  }
+  return mutato;
+}
+
+function ticketPerApp(ticket) {
+  return {
+    id: ticket.id,
+    titolo: ticket.titolo,
+    descrizione: ticket.descrizione ?? "",
+    clienteId: ticket.clienteId,
+    logonTecnico: ticket.logonTecnico,
+    stato: ticket.stato,
+    priorita: ticket.priorita,
+    aperto: ticket.aperto,
+    aggiornato: ticket.aggiornato,
+    risposte: ticket.risposte ?? [],
+  };
+}
+
+function dataLeggibile(iso) {
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return String(iso ?? "");
+  return new Intl.DateTimeFormat("it-IT", { dateStyle: "short", timeStyle: "short" }).format(data);
+}
+
+async function leggiCampi(richiesta) {
+  const corpo = await leggiCorpo(richiesta);
+  const tipo = String(richiesta.headers["content-type"] ?? "");
+  if (tipo.includes("application/json")) {
+    try {
+      const jsonCorpo = JSON.parse(corpo || "{}");
+      return { operatore: jsonCorpo.operatore ?? jsonCorpo.logon ?? "" };
+    } catch {
+      return { operatore: "" };
+    }
+  }
+  const parametri = new URLSearchParams(corpo);
+  return { operatore: parametri.get("operatore") ?? parametri.get("logon") ?? "" };
 }
 
 function leggiCorpo(richiesta) {
@@ -220,12 +355,33 @@ function html(risposta, codice, corpo) {
   risposta.end(dati);
 }
 
-function pagina(archivio) {
+function pagina(archivio, scelta) {
   const tecnici = archivio.tecnici ?? [];
-  const blocchi = tecnici.map((tecnico) => schedaTecnico(archivio, tecnico)).join("");
-  const aggiornamenti = (archivio.aggiornamenti ?? []).map((voce) => {
-    return `<li><strong>${escape(voce.nome || voce.logon)}</strong> · ${escape(voce.inviato)} · ${voce.interventi} interventi · ${voce.ticket} ticket</li>`;
+  const operatore = tecnici.find((tecnico) => tecnico.logon === normalizza(scelta.operatore)) ?? tecnici[0];
+  const scheda = scelta.scheda === "ricevuti" ? "ricevuti" : "da-inviare";
+  const logon = operatore?.logon ?? "";
+  const suoi = (archivio.ticket ?? []).filter((ticket) => ticket.logonTecnico === logon);
+  const daInviare = suoi.filter((ticket) => ticket.daInviare === true);
+  const ricevuti = suoi.filter((ticket) => ticket.ricevutoIl);
+  const visibili = scheda === "ricevuti" ? ricevuti : daInviare;
+  const opzioni = tecnici.map((tecnico) => {
+    const selezionato = tecnico.logon === logon ? " selected" : "";
+    return `<option value="${escape(tecnico.logon)}"${selezionato}>${escape(tecnico.nome)}</option>`;
   }).join("");
+  const elenco = visibili.map((ticket) => schedaTicket(archivio, ticket, scheda)).join("");
+  const vuoto = scheda === "ricevuti"
+    ? "Nessun ticket arrivato dall'app di questo operatore."
+    : "Nessun ticket da inviare. Usa «Simula un ticket e invialo».";
+  const spiegazione = scheda === "ricevuti"
+    ? "Solo i ticket che l'app mobile ha rimandato a questo operatore."
+    : "Solo i ticket ancora da scaricare sull'app di questo operatore.";
+  const aggiornamenti = (archivio.aggiornamenti ?? []).map((voce) => {
+    return `<li><strong>${escape(voce.nome || voce.logon)}</strong> · ${escape(dataLeggibile(voce.inviato))} · ${voce.interventi} interventi · ${voce.ticket} ticket</li>`;
+  }).join("");
+  const avviso = scelta.creato
+    ? `<p class="avviso">Ticket di prova creato per ${escape(operatore?.nome ?? "l'operatore")} e messo in Ticket da inviare.</p>`
+    : "";
+  const href = (nome) => `/?scheda=${nome}&operatore=${encodeURIComponent(logon)}`;
   return `<!DOCTYPE html>
 <html lang="it">
 <head>
@@ -244,52 +400,66 @@ function pagina(archivio) {
     .meta { color: #5c6770; font-size: 0.92rem; }
     ul { margin: 8px 0 0; padding-left: 1.1rem; }
     a { color: #0e4d5d; }
+    .barra { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; }
+    label { display: grid; gap: 6px; font-size: 0.92rem; }
+    select, button { font: inherit; }
+    select { padding: 8px 10px; border-radius: 8px; border: 1px solid #d5cec3; background: white; min-width: 16rem; }
+    button { background: #0e4d5d; color: white; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
+    nav.schede { display: flex; gap: 8px; margin: 4px 0 12px; }
+    nav.schede a { text-decoration: none; padding: 10px 16px; border-radius: 999px; background: #efeae2; color: #1c2430; }
+    nav.schede a.attiva { background: #0e4d5d; color: white; }
+    .avviso { background: #e5f4f1; border-radius: 12px; padding: 12px 14px; }
   </style>
 </head>
 <body>
   <header>
     <h1>Assistenza Tecnica Demo</h1>
-    <p>Dati locali del server sulla porta 3012. L'iPad scarica le assegnazioni e reinvia stato, note e risposte.</p>
+    <p>Scegli l'operatore. Ticket da inviare sono quelli ancora da mandare all'app. Ticket ricevuti sono quelli arrivati dall'app.</p>
   </header>
   <main>
     <section>
-      <h2>Aggiornamenti arrivati dall'iPad</h2>
-      ${aggiornamenti ? `<ul>${aggiornamenti}</ul>` : "<p class=\"meta\">Nessun invio ancora. I dati di partenza sono quelli del seed.</p>"}
-      <p><a href="/">Aggiorna la pagina</a></p>
+      <form class="barra" method="get" action="/">
+        <label>Operatore
+          <select name="operatore">${opzioni}</select>
+        </label>
+        <input type="hidden" name="scheda" value="${scheda}">
+        <button type="submit">Mostra</button>
+      </form>
+      <form method="post" action="/ticket/simula">
+        <input type="hidden" name="operatore" value="${escape(logon)}">
+        <button type="submit">Simula un ticket e invialo</button>
+      </form>
+      ${avviso}
+      <nav class="schede">
+        <a class="${scheda === "da-inviare" ? "attiva" : ""}" href="${href("da-inviare")}">Ticket da inviare (${daInviare.length})</a>
+        <a class="${scheda === "ricevuti" ? "attiva" : ""}" href="${href("ricevuti")}">Ticket ricevuti (${ricevuti.length})</a>
+      </nav>
+      <h2>${scheda === "ricevuti" ? "Ticket ricevuti" : "Ticket da inviare"} · ${escape(operatore?.nome ?? "")}</h2>
+      <p class="meta">${spiegazione}</p>
+      ${elenco || `<p class="meta">${vuoto}</p>`}
     </section>
-    ${blocchi}
+    <section>
+      <h2>Aggiornamenti arrivati dall'iPad</h2>
+      ${aggiornamenti ? `<ul>${aggiornamenti}</ul>` : "<p class=\"meta\">Nessun invio ancora.</p>"}
+    </section>
   </main>
 </body>
 </html>`;
 }
 
-function schedaTecnico(archivio, tecnico) {
-  const interventi = (archivio.interventi ?? []).filter((voce) => voce.logonTecnico === tecnico.logon);
-  const ticket = (archivio.ticket ?? []).filter((voce) => voce.logonTecnico === tecnico.logon);
-  const lavori = interventi.map((intervento) => {
-    const note = (intervento.note ?? []).map((nota) => `<li>${escape(nota.testo)} <span class="meta">— ${escape(nota.autore)}, ${escape(nota.data)}</span></li>`).join("");
-    return `<article>
-      <h3>${escape(intervento.titolo)}</h3>
-      <p class="meta">${escape(ETICHETTE_INTERVENTO[intervento.stato] || intervento.stato)} · ${escape(nomeCliente(archivio, intervento.clienteId))} · ${escape(intervento.appuntamento || "")}</p>
-      ${note ? `<ul>${note}</ul>` : "<p class=\"meta\">Nessuna nota.</p>"}
-    </article>`;
+function schedaTicket(archivio, ticket, scheda) {
+  const risposte = (ticket.risposte ?? []).map((risposta) => {
+    return `<li>${escape(risposta.testo)} <span class="meta">— ${escape(risposta.autore)}, ${escape(dataLeggibile(risposta.data))}</span></li>`;
   }).join("");
-  const richieste = ticket.map((voce) => {
-    const risposte = (voce.risposte ?? []).map((risposta) => `<li>${escape(risposta.testo)} <span class="meta">— ${escape(risposta.autore)}, ${escape(risposta.data)}</span></li>`).join("");
-    return `<article>
-      <h3>${escape(voce.titolo)}</h3>
-      <p class="meta">${escape(ETICHETTE_TICKET[voce.stato] || voce.stato)} · ${escape(nomeCliente(archivio, voce.clienteId))}</p>
-      ${risposte ? `<ul>${risposte}</ul>` : "<p class=\"meta\">Nessuna risposta.</p>"}
-    </article>`;
-  }).join("");
-  return `<section>
-    <h2>${escape(tecnico.nome)}</h2>
-    <p class="meta">${escape(tecnico.logon)} · password dimostrativa assistenza</p>
-    <h3>Interventi</h3>
-    ${lavori || "<p class=\"meta\">Nessun intervento.</p>"}
-    <h3>Ticket</h3>
-    ${richieste || "<p class=\"meta\">Nessun ticket.</p>"}
-  </section>`;
+  const quando = scheda === "ricevuti"
+    ? `Arrivato dall'app il ${dataLeggibile(ticket.ricevutoIl)}`
+    : "Ancora da mandare all'app";
+  return `<article>
+    <h3>${escape(ticket.titolo)}</h3>
+    <p class="meta">${escape(ETICHETTE_TICKET[ticket.stato] || ticket.stato)} · ${escape(nomeCliente(archivio, ticket.clienteId))} · ${escape(quando)}</p>
+    ${ticket.descrizione ? `<p>${escape(ticket.descrizione)}</p>` : ""}
+    ${risposte ? `<ul>${risposte}</ul>` : ""}
+  </article>`;
 }
 
 function nomeCliente(archivio, id) {
