@@ -75,7 +75,7 @@ Il server è in `demo-assistenza/`. I dati restano nel file locale `demo-assiste
 node demo-assistenza/server.mjs
 ```
 
-Poi apri http://127.0.0.1:3012/. In cima c'è **Simula un ticket e invialo**, sopra la scelta dell'operatore. Poi scegli l'operatore, per esempio Marco Bianchi. **Ticket da inviare** elenca solo i ticket ancora da mandare alla sua app. **Ticket ricevuti** elenca solo quelli arrivati dalla sua app. **Completa un ticket di prova** ne segna uno come eseguito sul server.
+Poi apri http://127.0.0.1:3012/. In cima, sopra la scelta dell'operatore, ci sono due comandi affiancati: **Simula un ticket e invialo** e, in verde con il segno di spunta, **Completa un ticket di prova**. Poi scegli l'operatore, per esempio Marco Bianchi. **Ticket da inviare** elenca solo i ticket ancora da mandare alla sua app. **Ticket ricevuti** elenca solo quelli arrivati dalla sua app. Completa un ticket di prova lo segna come eseguito per l'operatore selezionato.
 
 Sull'iPad, in **Ticket**, premi **Scarica eseguiti**: arrivano solo i ticket risolti o chiusi di chi ha fatto l'accesso.
 

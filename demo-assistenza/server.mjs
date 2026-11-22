@@ -480,8 +480,8 @@ function pagina(archivio, scelta) {
     select { padding: 8px 10px; border-radius: 8px; border: 1px solid #d5cec3; background: white; min-width: 16rem; }
     button { background: #0e4d5d; color: white; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
     button.comando { display: inline-flex; align-items: center; gap: 8px; font-size: 1.05rem; }
-    button.secondario { background: white; color: #0e4d5d; border: 1px solid #0e4d5d; }
-    form.azioni { margin: 0 0 18px; }
+    button.comando.eseguito { background: #1f7a4d; }
+    .azioni { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 0 0 18px; }
     nav.schede { display: flex; gap: 8px; margin: 4px 0 12px; }
     nav.schede a { text-decoration: none; padding: 10px 16px; border-radius: 999px; background: #efeae2; color: #1c2430; }
     nav.schede a.attiva { background: #0e4d5d; color: white; }
@@ -495,23 +495,28 @@ function pagina(archivio, scelta) {
   </header>
   <main>
     <section>
-      <form class="azioni" method="post" action="/ticket/simula">
-        <input type="hidden" name="operatore" value="${escape(logon)}">
-        <button class="comando" type="submit">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4Z"/><path d="M8 8v8"/></svg>
-          Simula un ticket e invialo
-        </button>
-      </form>
+      <div class="azioni">
+        <form method="post" action="/ticket/simula">
+          <input type="hidden" name="operatore" value="${escape(logon)}">
+          <button class="comando" type="submit">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4Z"/><path d="M8 8v8"/></svg>
+            Simula un ticket e invialo
+          </button>
+        </form>
+        <form method="post" action="/ticket/eseguito">
+          <input type="hidden" name="operatore" value="${escape(logon)}">
+          <button class="comando eseguito" type="submit">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg>
+            Completa un ticket di prova
+          </button>
+        </form>
+      </div>
       <form class="barra" method="get" action="/">
         <label>Operatore
-          <select name="operatore">${opzioni}</select>
+          <select name="operatore" onchange="document.querySelectorAll('.azioni input[name=operatore]').forEach(function (campo) { campo.value = this.value; }, this)">${opzioni}</select>
         </label>
         <input type="hidden" name="scheda" value="${scheda}">
         <button type="submit">Mostra</button>
-      </form>
-      <form method="post" action="/ticket/eseguito">
-        <input type="hidden" name="operatore" value="${escape(logon)}">
-        <button class="secondario" type="submit">Completa un ticket di prova</button>
       </form>
       ${avviso}
       <nav class="schede">
