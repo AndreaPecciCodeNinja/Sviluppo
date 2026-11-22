@@ -1,0 +1,80 @@
+{
+  "tecnici": [
+    {
+      "logon": "paolo.conti",
+      "nome": "Paolo Conti",
+      "password": "assistenza"
+    }
+  ],
+  "clienti": [
+    {
+      "id": "cli-paolo-tipografia",
+      "nome": "Tipografia Nord",
+      "referente": "Sara Villa",
+      "telefono": "+39 011 555 0142",
+      "email": "sara.villa@tipografia-nord.example",
+      "indirizzo": "Corso Francia 22, Torino",
+      "logonTecnico": "paolo.conti"
+    },
+    {
+      "id": "cli-paolo-studio-medico",
+      "nome": "Studio Medico Riva",
+      "referente": "Elena Riva",
+      "telefono": "+39 011 555 0177",
+      "email": "segreteria@studio-riva.example",
+      "indirizzo": "Via Po 8, Torino",
+      "logonTecnico": "paolo.conti"
+    }
+  ],
+  "interventi": [
+    {
+      "id": "int-paolo-plotter",
+      "titolo": "Manutenzione plotter",
+      "descrizione": "Il plotter si ferma a metà stampa. Controllare testina e cavi.",
+      "clienteId": "cli-paolo-tipografia",
+      "logonTecnico": "paolo.conti",
+      "stato": "programmato",
+      "priorita": "alta",
+      "appuntamento": "2026-11-23T09:00:00+01:00",
+      "indirizzo": "Corso Francia 22, Torino",
+      "note": [
+        {
+          "id": "nota-paolo-1",
+          "testo": "Portare il kit di pulizia testine.",
+          "autore": "Coordinamento",
+          "data": "2026-11-22T08:00:00+01:00"
+        }
+      ]
+    },
+    {
+      "id": "int-paolo-rete",
+      "titolo": "Verifica rete sala attesa",
+      "descrizione": "Il Wi-Fi della sala attesa non è disponibile dal 21 novembre.",
+      "clienteId": "cli-paolo-studio-medico",
+      "logonTecnico": "paolo.conti",
+      "stato": "in_corso",
+      "priorita": "media",
+      "appuntamento": "2026-11-22T16:30:00+01:00",
+      "indirizzo": "Via Po 8, Torino"
+    }
+  ],
+  "ticket": [
+    {
+      "id": "tck-paolo-backup",
+      "titolo": "Backup notturno fallito",
+      "descrizione": "Il gestionale segnala un backup incompleto da tre giorni.",
+      "clienteId": "cli-paolo-tipografia",
+      "logonTecnico": "paolo.conti",
+      "stato": "aperto",
+      "priorita": "alta",
+      "risposte": [
+        {
+          "id": "ris-paolo-1",
+          "testo": "Potete intervenire prima della chiusura di venerdì?",
+          "autore": "Sara Villa",
+          "data": "2026-11-22T09:15:00+01:00"
+        }
+      ]
+    }
+  ]
+}
