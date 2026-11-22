@@ -31,6 +31,7 @@ const server = createServer(async (richiesta, risposta) => {
         scheda: url.searchParams.get("scheda"),
         operatore: url.searchParams.get("operatore"),
         creato: url.searchParams.get("creato") === "1",
+        eseguito: url.searchParams.get("eseguito") === "1",
       }));
     }
 
@@ -49,6 +50,21 @@ const server = createServer(async (richiesta, risposta) => {
       return;
     }
 
+    if (richiesta.method === "POST" && url.pathname === "/ticket/eseguito") {
+      const campi = await leggiCampi(richiesta);
+      const archivio = await carica();
+      const tecnico = tecnicoDi(archivio, campi.operatore);
+      if (!tecnico) return json(risposta, 404, { errore: "Nessun operatore con questo logon." });
+      completaTicket(archivio, tecnico);
+      await salva(archivio);
+      risposta.writeHead(303, {
+        Location: `/?scheda=da-inviare&operatore=${encodeURIComponent(tecnico.logon)}&eseguito=1`,
+        "Cache-Control": "no-store",
+      });
+      risposta.end();
+      return;
+    }
+
     const assegnazioni = url.pathname.match(/^\/api\/tecnici\/([^/]+)\/assegnazioni$/);
     if (richiesta.method === "GET" && assegnazioni) {
       const logon = normalizza(decodeURIComponent(assegnazioni[1]));
@@ -58,6 +74,15 @@ const server = createServer(async (richiesta, risposta) => {
       const pacchetto = pacchettoAssegnazioni(archivio, tecnico.logon);
       if (segnaInviati(archivio, tecnico.logon)) await salva(archivio);
       return json(risposta, 200, pacchetto);
+    }
+
+    const eseguiti = url.pathname.match(/^\/api\/tecnici\/([^/]+)\/ticket-eseguiti$/);
+    if (richiesta.method === "GET" && eseguiti) {
+      const logon = normalizza(decodeURIComponent(eseguiti[1]));
+      const archivio = await carica();
+      const tecnico = tecnicoDi(archivio, logon);
+      if (!tecnico) return json(risposta, 404, { errore: "Nessun tecnico con questo logon." });
+      return json(risposta, 200, pacchettoTicketEseguiti(archivio, tecnico.logon));
     }
 
     if (richiesta.method === "POST" && url.pathname === "/api/sincronizzazione") {
@@ -205,6 +230,51 @@ function unisciAnnotazioni(esistenti, nuove) {
     else risultato.push(record);
   }
   return risultato.sort((a, b) => String(a.data).localeCompare(String(b.data)));
+}
+
+function ticketEseguito(ticket) {
+  return ticket.stato === "risolto" || ticket.stato === "chiuso";
+}
+
+function pacchettoTicketEseguiti(archivio, logon) {
+  const tecnico = (archivio.tecnici ?? []).find((voce) => voce.logon === logon);
+  const ticket = (archivio.ticket ?? []).filter((voce) => voce.logonTecnico === logon && ticketEseguito(voce)).map(ticketPerApp);
+  const clientiId = new Set(ticket.map((voce) => voce.clienteId));
+  return {
+    tecnici: tecnico
+      ? [{ id: tecnico.id, logon: tecnico.logon, nome: tecnico.nome, password: tecnico.password }]
+      : [],
+    clienti: (archivio.clienti ?? []).filter((voce) => clientiId.has(voce.id)),
+    ticket,
+  };
+}
+
+function completaTicket(archivio, tecnico) {
+  const cliente = clienteDellOperatore(archivio, tecnico.logon);
+  const ora = new Date().toISOString();
+  const ticket = {
+    id: `tck-eseguito-${randomUUID().slice(0, 8)}`,
+    titolo: `Ticket eseguito ${dataLeggibile(ora)}`,
+    descrizione: `Completato sul server per ${tecnico.nome}. L'iPad lo scarica da Ticket con Scarica eseguiti.`,
+    clienteId: cliente.id,
+    logonTecnico: tecnico.logon,
+    stato: "risolto",
+    priorita: "bassa",
+    aperto: ora,
+    aggiornato: ora,
+    risposte: [
+      {
+        id: `ris-${randomUUID().slice(0, 8)}`,
+        testo: "Lavoro chiuso in sede.",
+        autore: tecnico.nome,
+        data: ora,
+      },
+    ],
+    daInviare: false,
+  };
+  archivio.ticket = Array.isArray(archivio.ticket) ? archivio.ticket : [];
+  archivio.ticket.unshift(ticket);
+  return ticket;
 }
 
 function simulaTicket(archivio, tecnico) {
@@ -363,6 +433,7 @@ function pagina(archivio, scelta) {
   const suoi = (archivio.ticket ?? []).filter((ticket) => ticket.logonTecnico === logon);
   const daInviare = suoi.filter((ticket) => ticket.daInviare === true);
   const ricevuti = suoi.filter((ticket) => ticket.ricevutoIl);
+  const eseguiti = suoi.filter(ticketEseguito);
   const visibili = scheda === "ricevuti" ? ricevuti : daInviare;
   const opzioni = tecnici.map((tecnico) => {
     const selezionato = tecnico.logon === logon ? " selected" : "";
@@ -380,7 +451,10 @@ function pagina(archivio, scelta) {
   }).join("");
   const avviso = scelta.creato
     ? `<p class="avviso">Ticket di prova creato per ${escape(operatore?.nome ?? "l'operatore")} e messo in Ticket da inviare.</p>`
-    : "";
+    : scelta.eseguito
+      ? `<p class="avviso">Ticket eseguito creato per ${escape(operatore?.nome ?? "l'operatore")}. Sull'iPad, in Ticket, premi Scarica eseguiti.</p>`
+      : "";
+  const elencoEseguiti = eseguiti.map((ticket) => schedaTicket(archivio, ticket, "eseguiti")).join("");
   const href = (nome) => `/?scheda=${nome}&operatore=${encodeURIComponent(logon)}`;
   return `<!DOCTYPE html>
 <html lang="it">
@@ -405,6 +479,9 @@ function pagina(archivio, scelta) {
     select, button { font: inherit; }
     select { padding: 8px 10px; border-radius: 8px; border: 1px solid #d5cec3; background: white; min-width: 16rem; }
     button { background: #0e4d5d; color: white; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
+    button.comando { display: inline-flex; align-items: center; gap: 8px; font-size: 1.05rem; }
+    button.secondario { background: white; color: #0e4d5d; border: 1px solid #0e4d5d; }
+    form.azioni { margin: 0 0 18px; }
     nav.schede { display: flex; gap: 8px; margin: 4px 0 12px; }
     nav.schede a { text-decoration: none; padding: 10px 16px; border-radius: 999px; background: #efeae2; color: #1c2430; }
     nav.schede a.attiva { background: #0e4d5d; color: white; }
@@ -418,6 +495,13 @@ function pagina(archivio, scelta) {
   </header>
   <main>
     <section>
+      <form class="azioni" method="post" action="/ticket/simula">
+        <input type="hidden" name="operatore" value="${escape(logon)}">
+        <button class="comando" type="submit">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4Z"/><path d="M8 8v8"/></svg>
+          Simula un ticket e invialo
+        </button>
+      </form>
       <form class="barra" method="get" action="/">
         <label>Operatore
           <select name="operatore">${opzioni}</select>
@@ -425,9 +509,9 @@ function pagina(archivio, scelta) {
         <input type="hidden" name="scheda" value="${scheda}">
         <button type="submit">Mostra</button>
       </form>
-      <form method="post" action="/ticket/simula">
+      <form method="post" action="/ticket/eseguito">
         <input type="hidden" name="operatore" value="${escape(logon)}">
-        <button type="submit">Simula un ticket e invialo</button>
+        <button class="secondario" type="submit">Completa un ticket di prova</button>
       </form>
       ${avviso}
       <nav class="schede">
@@ -437,6 +521,9 @@ function pagina(archivio, scelta) {
       <h2>${scheda === "ricevuti" ? "Ticket ricevuti" : "Ticket da inviare"} · ${escape(operatore?.nome ?? "")}</h2>
       <p class="meta">${spiegazione}</p>
       ${elenco || `<p class="meta">${vuoto}</p>`}
+      <h2>Ticket eseguiti · ${escape(operatore?.nome ?? "")}</h2>
+      <p class="meta">Completati sul server per questo operatore. L'iPad li scarica da Ticket, con Scarica eseguiti.</p>
+      ${elencoEseguiti || "<p class=\"meta\">Nessun ticket eseguito. Usa «Completa un ticket di prova».</p>"}
     </section>
     <section>
       <h2>Aggiornamenti arrivati dall'iPad</h2>
@@ -453,7 +540,9 @@ function schedaTicket(archivio, ticket, scheda) {
   }).join("");
   const quando = scheda === "ricevuti"
     ? `Arrivato dall'app il ${dataLeggibile(ticket.ricevutoIl)}`
-    : "Ancora da mandare all'app";
+    : scheda === "eseguiti"
+      ? "Completato sul server"
+      : "Ancora da mandare all'app";
   return `<article>
     <h3>${escape(ticket.titolo)}</h3>
     <p class="meta">${escape(ETICHETTE_TICKET[ticket.stato] || ticket.stato)} · ${escape(nomeCliente(archivio, ticket.clienteId))} · ${escape(quando)}</p>

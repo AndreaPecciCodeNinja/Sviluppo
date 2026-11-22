@@ -30,6 +30,8 @@ final class ArchivioLocale {
     var ultimoNomeFile: String?
     var messaggioSincronizzazione: String?
     var sincronizzazioneInCorso = false
+    var messaggioTicket: String?
+    var scaricamentoTicketInCorso = false
 
     init(percorso: URL? = nil) {
         self.percorso = percorso ?? Self.percorsoPredefinito()

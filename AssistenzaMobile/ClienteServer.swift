@@ -69,6 +69,49 @@ enum ClienteServer {
         archivio.messaggioSincronizzazione = pezzi.joined(separator: " ")
     }
 
+    /// Scarica i ticket risolti o chiusi sul server, solo per il tecnico che ha fatto l'accesso.
+    @discardableResult
+    static func scaricaTicketEseguiti(archivio: ArchivioLocale, sessione: SessioneTecnico) async -> Bool {
+        guard !archivio.scaricamentoTicketInCorso, !archivio.sincronizzazioneInCorso else { return false }
+        guard let tecnicoID = sessione.tecnicoID, let tecnico = archivio.tecnico(id: tecnicoID) else {
+            archivio.messaggioTicket = "Entra con il tuo logon per scaricare i ticket eseguiti."
+            return false
+        }
+        guard let origine = origine(urlTesto) else {
+            archivio.messaggioTicket = "L'indirizzo del server non è valido. I ticket restano su questo iPad."
+            return false
+        }
+        archivio.scaricamentoTicketInCorso = true
+        defer { archivio.scaricamentoTicketInCorso = false }
+
+        do {
+            let percorso = "/api/tecnici/\(tecnico.logon.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? tecnico.logon)/ticket-eseguiti"
+            let dati = try await scarica(percorso, origine: origine, errore: "Scaricamento dei ticket eseguiti non riuscito.")
+            let elenco = elencoTicket(in: dati)
+            if elenco.isEmpty {
+                archivio.messaggioTicket = "Nessun ticket eseguito sul server per \(tecnico.logon)."
+                return false
+            }
+            switch archivio.importa(dati: dati, nomeFile: "Ticket eseguiti", registraEsito: false) {
+            case .success(let esito):
+                archivio.messaggioTicket = testoScarico(esito)
+                return true
+            case .failure(let errore):
+                archivio.messaggioTicket = (errore as? ErroreImportazione)?.messaggio ?? "I ticket eseguiti non sono leggibili."
+                return false
+            }
+        } catch ErroreServer.irraggiungibile {
+            archivio.messaggioTicket = "Server non raggiungibile. I ticket già sull'iPad restano."
+            return false
+        } catch let errore as ErroreServer {
+            archivio.messaggioTicket = errore.descrizione
+            return false
+        } catch {
+            archivio.messaggioTicket = "Non è stato possibile scaricare i ticket eseguiti."
+            return false
+        }
+    }
+
     static func origine(_ testo: String) -> URL? {
         var raw = testo.trimmingCharacters(in: .whitespacesAndNewlines)
         if raw.isEmpty { raw = urlPredefinito }
@@ -86,13 +129,42 @@ enum ClienteServer {
 
     private static func scaricaAssegnazioni(logon: String, origine: URL) async throws -> Data {
         let percorso = "/api/tecnici/\(logon.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? logon)/assegnazioni"
+        return try await scarica(percorso, origine: origine, errore: "Scaricamento delle assegnazioni non riuscito.")
+    }
+
+    private static func scarica(_ percorso: String, origine: URL, errore: String) async throws -> Data {
         guard let url = url(origine, percorso) else { throw ErroreServer.url }
         let (dati, http) = try await chiedi(url, metodo: "GET", corpo: nil)
         guard (200...299).contains(http.statusCode) else {
-            throw ErroreServer.risposta(http.statusCode, messaggio(dati) ?? "Scaricamento delle assegnazioni non riuscito.")
+            throw ErroreServer.risposta(http.statusCode, messaggio(dati) ?? errore)
         }
         guard !dati.isEmpty else { throw ErroreServer.formato }
         return dati
+    }
+
+    private static func elencoTicket(in dati: Data) -> [Any] {
+        guard let oggetto = try? JSONSerialization.jsonObject(with: dati) as? [String: Any] else { return [] }
+        return oggetto["ticket"] as? [Any] ?? []
+    }
+
+    private static func testoScarico(_ esito: EsitoImportazione) -> String {
+        let nuovi = esito.ticketNuovi
+        let aggiornati = esito.ticketAggiornati
+        if nuovi == 0 && aggiornati == 0 {
+            return "I ticket eseguiti del server erano già su questo iPad."
+        }
+        var pezzi: [String] = []
+        if nuovi == 1 {
+            pezzi.append("1 ticket eseguito nuovo")
+        } else if nuovi > 1 {
+            pezzi.append("\(nuovi) ticket eseguiti nuovi")
+        }
+        if aggiornati == 1 {
+            pezzi.append("1 ticket eseguito aggiornato")
+        } else if aggiornati > 1 {
+            pezzi.append("\(aggiornati) ticket eseguiti aggiornati")
+        }
+        return "Salvati sull'iPad: \(pezzi.joined(separator: ", "))."
     }
 
     private static func inviaAggiornamenti(

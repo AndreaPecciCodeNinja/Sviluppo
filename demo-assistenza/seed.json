@@ -182,6 +182,25 @@
   ],
   "ticket": [
     {
+      "id": "tck-marco-eseguito",
+      "titolo": "Toner sostituito in reception",
+      "descrizione": "Ticket completato sul server. L'iPad lo scarica con Scarica eseguiti.",
+      "clienteId": "cli-studio-conti",
+      "logonTecnico": "marco.bianchi",
+      "stato": "risolto",
+      "priorita": "bassa",
+      "aperto": "2026-11-21T16:00:00+01:00",
+      "aggiornato": "2026-11-21T17:00:00+01:00",
+      "risposte": [
+        {
+          "id": "ris-marco-eseguito-1",
+          "testo": "Toner sostituito e stampa di prova fatta.",
+          "autore": "Marco Bianchi",
+          "data": "2026-11-21T17:00:00+01:00"
+        }
+      ]
+    },
+    {
       "id": "tck-marco-posta",
       "titolo": "Posta che richiede la password",
       "descrizione": "Outlook chiede la password in continuazione.",

@@ -7,6 +7,7 @@ enum FiltroTicket: String, CaseIterable, Identifiable {
     case inAttesa
     case risolti
     case chiusi
+    case eseguiti
 
     var id: String { rawValue }
 
@@ -18,6 +19,7 @@ enum FiltroTicket: String, CaseIterable, Identifiable {
         case .inAttesa: return "In attesa"
         case .risolti: return "Risolti"
         case .chiusi: return "Chiusi"
+        case .eseguiti: return "Eseguiti"
         }
     }
 
@@ -29,6 +31,7 @@ enum FiltroTicket: String, CaseIterable, Identifiable {
         case .inAttesa: return .inAttesaCliente
         case .risolti: return .risolto
         case .chiusi: return .chiuso
+        case .eseguiti: return nil
         }
     }
 }
@@ -52,7 +55,8 @@ struct VistaTicket: View {
         let ago = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return assegnati
             .filter { ticket in
-                (filtro.stato == nil || ticket.stato == filtro.stato) && corrisponde(ticket, ago: ago)
+                let statoOk = filtro == .eseguiti ? ticket.stato.chiuso : (filtro.stato == nil || ticket.stato == filtro.stato)
+                return statoOk && corrisponde(ticket, ago: ago)
             }
             .sorted { lhs, rhs in
                 if lhs.stato.chiuso != rhs.stato.chiuso { return !lhs.stato.chiuso }
@@ -77,7 +81,7 @@ struct VistaTicket: View {
                         }
                 }
             } footer: {
-                Text("Solo i ticket assegnati al tuo logon.")
+                Text("Solo i ticket del tuo logon. Scarica eseguiti prende dal server quelli risolti o chiusi.")
             }
         }
         .listStyle(.inset)
@@ -94,7 +98,29 @@ struct VistaTicket: View {
                 )
             }
         }
+        .safeAreaInset(edge: .top) {
+            if let messaggio = archivio.messaggioTicket {
+                Banner(testo: messaggio, simbolo: "arrow.down.circle", colore: Tinta.marchio)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+            }
+        }
         .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    Task {
+                        let scaricati = await ClienteServer.scaricaTicketEseguiti(archivio: archivio, sessione: sessione)
+                        if scaricati { filtro = .eseguiti }
+                    }
+                } label: {
+                    if archivio.scaricamentoTicketInCorso {
+                        ProgressView()
+                    } else {
+                        Label("Scarica eseguiti", systemImage: "arrow.down.circle")
+                    }
+                }
+                .disabled(archivio.scaricamentoTicketInCorso || archivio.sincronizzazioneInCorso || tecnicoID == nil)
+            }
             ToolbarItem(placement: .automatic) {
                 Picker("Stato", selection: $filtro) {
                     ForEach(FiltroTicket.allCases) { filtro in

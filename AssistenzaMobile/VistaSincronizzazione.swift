@@ -80,6 +80,11 @@ struct GuidaSincronizzazione: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
+            voce("Ticket eseguiti", "GET /api/tecnici/{logon}/ticket-eseguiti")
+            Text("In Ticket, Scarica eseguiti salva sull'iPad i ticket risolti o chiusi del tecnico che ha fatto l'accesso. Lo stato completato sul server resta.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
             voce("Invia", "POST /api/sincronizzazione")
             Text("Il corpo contiene solo il tecnico loggato: per ogni intervento id, stato, aggiornato e note; per ogni ticket id, stato, aggiornato e risposte. Le date sono ISO 8601. Non parte la password.")
                 .font(.callout)
