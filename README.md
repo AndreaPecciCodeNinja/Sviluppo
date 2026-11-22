@@ -67,16 +67,24 @@ Il file può essere un oggetto con `tecnici`, `clienti` (oppure `utenti`), `inte
 
 Campi principali di un intervento: `titolo`, `logonTecnico`, `appuntamento` (ISO 8601), `clienteId` oppure un oggetto `cliente`, `stato` (`programmato`, `in_corso`, `in_attesa`, `completato`, `annullato`), `priorita` (`bassa`, `media`, `alta`, `urgente`), `note`.
 
-## Sincronizzazione con la demo
+## Demo Assistenza Tecnica
 
-La demo «Assistenza Tecnica Demo» non è in questo checkout né sugli altri branch del repository. L'app iPad usa comunque l'origine `http://127.0.0.1:3012` (porta 3012), modificabile in **Sincronizzazione**.
+Il server è in `demo-assistenza/`. I dati restano nel file locale `demo-assistenza/dati/archivio.json`, creato al primo avvio dal seed. Non serve installare pacchetti.
 
-All'apertura, e dal pulsante **Sincronizza con la demo**, l'iPad:
+```bash
+node demo-assistenza/server.mjs
+```
 
-1. `GET /api/tecnici/{logon}/assegnazioni` e importa il JSON (stesso formato dei file in `esempi/`). Lo stato e le note già scritti sull'iPad non vengono sostituiti.
-2. `POST /api/sincronizzazione` con il tecnico loggato, lo stato degli interventi, le note e le risposte dei ticket. Le date sono ISO 8601. La password non esce dall'iPad.
+Poi apri http://127.0.0.1:3012/. La pagina elenca tecnici, interventi, ticket e gli invii arrivati dall'iPad.
 
-Se il server non risponde, l'archivio locale resta e l'app si usa offline. Manca il sorgente del server: quelle due rotte vanno esposte dalla demo.
+Logon di prova, password `assistenza`: `marco.bianchi`, `lucia.ferrari`, `paolo.conti`.
+
+L'iPad, in **Sincronizzazione**, usa la stessa origine:
+
+1. `GET /api/tecnici/{logon}/assegnazioni` restituisce il JSON dell'importazione, solo per quel logon.
+2. `POST /api/sincronizzazione` registra stato, note e risposte. Le date sono ISO 8601.
+
+Se il server è spento, l'app iPad continua a funzionare con l'archivio sul dispositivo.
 
 ## Dati sul dispositivo
 

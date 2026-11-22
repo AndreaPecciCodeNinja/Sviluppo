@@ -72,7 +72,7 @@ struct VistaSincronizzazione: View {
 struct GuidaSincronizzazione: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("La demo «Assistenza Tecnica Demo» non è in questo checkout né sugli altri branch. L'app parla con l'origine indicata, in modo predefinito \(ClienteServer.urlPredefinito).")
+            Text("La demo è il server in demo-assistenza, in ascolto su \(ClienteServer.urlPredefinito). Si avvia con node demo-assistenza/server.mjs.")
                 .foregroundStyle(.secondary)
 
             voce("Scarica", "GET /api/tecnici/{logon}/assegnazioni")
@@ -85,7 +85,7 @@ struct GuidaSincronizzazione: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
-            Text("Manca il programma del server in questo repository. Finché quelle due rotte non rispondono, la sincronizzazione si ferma e l'archivio locale resta com'è. Con la rete assente l'iPad si usa lo stesso.")
+            Text("I dati del server restano in demo-assistenza/dati/archivio.json. Se il server è spento, l'iPad continua con l'archivio locale.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

@@ -5,3 +5,4 @@ DerivedData/
 build/
 .swiftpm/
 *.moved-aside
+demo-assistenza/dati/

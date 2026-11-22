@@ -1,7 +1,6 @@
 import Foundation
 
-/// Client verso la demo «Assistenza Tecnica Demo».
-/// Il sorgente della demo non è in questo repository: l'iPad chiama l'origine configurata.
+/// Client verso la demo «Assistenza Tecnica Demo» in demo-assistenza, porta 3012.
 @MainActor
 enum ClienteServer {
     static let urlPredefinito = "http://127.0.0.1:3012"
