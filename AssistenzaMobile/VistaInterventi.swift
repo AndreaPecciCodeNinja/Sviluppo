@@ -65,9 +65,14 @@ struct VistaInterventi: View {
         List(selection: $selezione) {
             Section {
                 ForEach(filtrati) { intervento in
-                    riga(intervento)
-                        .tag(intervento.id)
-                        .contextMenu {
+                    Button {
+                        selezione = intervento.id
+                    } label: {
+                        riga(intervento)
+                    }
+                    .buttonStyle(.plain)
+                    .tag(intervento.id)
+                    .contextMenu {
                             ForEach(StatoIntervento.allCases) { stato in
                                 Button(stato.titolo) {
                                     guard let tecnicoID else { return }
@@ -77,7 +82,7 @@ struct VistaInterventi: View {
                         }
                 }
             } footer: {
-                Text("Solo gli interventi assegnati al tuo logon.")
+                Text("Tocca un intervento per aprirlo, aggiornare lo stato e scrivere le note.")
             }
         }
         .listStyle(.inset)
@@ -244,6 +249,48 @@ struct DettaglioIntervento: View {
                     BloccoTesto(titolo: "Descrizione", testo: intervento.descrizione)
                 }
 
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Esecuzione")
+                        .font(.headline)
+                    HStack(spacing: 12) {
+                        Button {
+                            archivio.aggiornaStatoIntervento(id: intervento.id, tecnicoID: tecnicoID, stato: .inCorso)
+                        } label: {
+                            Label("In corso", systemImage: intervento.stato == .inCorso ? "checkmark" : "play.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                        .disabled(intervento.stato == .inCorso)
+
+                        Button {
+                            archivio.aggiornaStatoIntervento(id: intervento.id, tecnicoID: tecnicoID, stato: .completato)
+                        } label: {
+                            Label("Completato", systemImage: "checkmark")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                        .disabled(intervento.stato == .completato)
+
+                        Button {
+                            Task { await ClienteServer.sincronizza(archivio: archivio, sessione: sessione) }
+                        } label: {
+                            if archivio.sincronizzazioneInCorso {
+                                ProgressView()
+                            } else {
+                                Label("Invia al server", systemImage: "arrow.up.circle")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(archivio.sincronizzazioneInCorso)
+                    }
+                    Text("Lo stato e le note restano su questo iPad. L'invio usa la sincronizzazione e parte se la demo risponde.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let messaggio = archivio.messaggioSincronizzazione {
+                        Banner(testo: messaggio, simbolo: "arrow.up.circle", colore: Tinta.marchio)
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Note")
                         .font(.headline)
@@ -265,7 +312,7 @@ struct DettaglioIntervento: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
             HStack(alignment: .bottom, spacing: 12) {
-                TextField("Scrivi una nota", text: $bozza, axis: .vertical)
+                TextField("Nota di quello che hai fatto", text: $bozza, axis: .vertical)
                     .lineLimit(1...4)
                     .textFieldStyle(.roundedBorder)
                 Button("Aggiungi") {
