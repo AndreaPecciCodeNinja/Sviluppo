@@ -41,13 +41,14 @@ struct VistaRadice: View {
 private struct ContenutoPrincipale: View {
     @Environment(ArchivioLocale.self) private var archivio
     @Environment(SessioneTecnico.self) private var sessione
-    @State private var sezione: Sezione? = .interventi
+    @State private var sezione: Sezione?
+    @State private var colonne: NavigationSplitViewVisibility = .all
     @State private var interventoID: String?
     @State private var clienteID: String?
     @State private var ticketID: String?
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $colonne) {
             BarraLaterale(sezione: $sezione)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
         } content: {
@@ -107,6 +108,11 @@ private struct ContenutoPrincipale: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            if sezione == nil {
+                sezione = .interventi
+            }
+        }
     }
 
     private func apriCliente(_ id: String) {
