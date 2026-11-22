@@ -41,7 +41,7 @@ struct VistaRadice: View {
 private struct ContenutoPrincipale: View {
     @Environment(ArchivioLocale.self) private var archivio
     @Environment(SessioneTecnico.self) private var sessione
-    @State private var sezione: Sezione = .interventi
+    @State private var sezione: Sezione? = .interventi
     @State private var interventoID: String?
     @State private var clienteID: String?
     @State private var ticketID: String?
@@ -51,7 +51,7 @@ private struct ContenutoPrincipale: View {
             BarraLaterale(sezione: $sezione)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
         } content: {
-            switch sezione {
+            switch sezione ?? .interventi {
             case .interventi:
                 VistaInterventi(selezione: $interventoID)
             case .clienti:
@@ -62,7 +62,7 @@ private struct ContenutoPrincipale: View {
                 VistaImportazione()
             }
         } detail: {
-            switch sezione {
+            switch sezione ?? .interventi {
             case .interventi:
                 if let interventoID {
                     DettaglioIntervento(id: interventoID, onApriCliente: apriCliente)
@@ -128,7 +128,7 @@ private struct ContenutoPrincipale: View {
 private struct BarraLaterale: View {
     @Environment(ArchivioLocale.self) private var archivio
     @Environment(SessioneTecnico.self) private var sessione
-    @Binding var sezione: Sezione
+    @Binding var sezione: Sezione?
 
     private var tecnico: Tecnico? {
         guard let id = sessione.tecnicoID else { return nil }
