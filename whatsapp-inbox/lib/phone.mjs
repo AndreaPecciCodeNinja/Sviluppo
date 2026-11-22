@@ -26,11 +26,6 @@ export function formatPhone(value) {
 
 export function recipientAddress(recipient) {
   if (!recipient || typeof recipient !== "object") return null;
-  if (recipient.phone_number) {
-    return normalizePhone(recipient.phone_number) || null;
-  }
-  if (typeof recipient.bsuid === "string" && recipient.bsuid.trim()) {
-    return recipient.bsuid.trim();
-  }
+  if (recipient.phone_number) return normalizePhone(recipient.phone_number) || null;
   return null;
 }

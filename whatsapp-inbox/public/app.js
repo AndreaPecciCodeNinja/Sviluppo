@@ -267,7 +267,7 @@ async function loadConversations({ append = false } = {}) {
     }
     setListState(state.conversations.length ? "" : state.query
       ? "Nessuna conversazione corrisponde alla ricerca."
-      : "Non ci sono conversazioni su questo numero.");
+      : "Nessuna conversazione ricevuta da WhatsApp.");
     renderConversations();
     if (state.selected) renderThread();
   } catch (error) {

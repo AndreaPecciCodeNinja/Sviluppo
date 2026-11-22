@@ -1,11 +1,11 @@
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { access } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { BUSINESS_NUMBER, normalizePhone, recipientAddress } from "./phone.mjs";
+import { BUSINESS_NUMBER, normalizePhone } from "./phone.mjs";
 import { presentAccount, presentConversation, presentMessage } from "./present.mjs";
 
-const CONVERSATION_ID = /^wacv_[A-Za-z0-9]+$/;
+const CONVERSATION_ID = /^[1-9][0-9]{7,15}$/;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9_.:/-]{8,200}$/;
 const MAX_TEXT = 4096;
 
@@ -34,7 +34,7 @@ function sendError(res, error) {
   sendJson(res, status, { error: error?.message || "Richiesta non riuscita." });
 }
 
-function readJson(req) {
+function readRaw(req, limit) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -42,7 +42,7 @@ function readJson(req) {
     req.on("data", (chunk) => {
       if (failed) return;
       size += chunk.length;
-      if (size > 16_384) {
+      if (size > limit) {
         failed = true;
         reject(Object.assign(new Error("Corpo della richiesta troppo grande."), { status: 413 }));
         req.destroy();
@@ -51,21 +51,7 @@ function readJson(req) {
       chunks.push(chunk);
     });
     req.on("end", () => {
-      if (failed) return;
-      if (size === 0) {
-        resolve({});
-        return;
-      }
-      try {
-        const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        if (!value || typeof value !== "object" || Array.isArray(value)) {
-          reject(Object.assign(new Error("Il corpo deve essere un oggetto JSON."), { status: 400 }));
-          return;
-        }
-        resolve(value);
-      } catch {
-        reject(Object.assign(new Error("JSON non valido."), { status: 400 }));
-      }
+      if (!failed) resolve(Buffer.concat(chunks));
     });
     req.on("error", () => {
       if (!failed) reject(Object.assign(new Error("Richiesta interrotta."), { status: 400 }));
@@ -73,10 +59,32 @@ function readJson(req) {
   });
 }
 
+async function readJson(req) {
+  const raw = await readRaw(req, 16_384);
+  if (raw.length === 0) return {};
+  try {
+    const value = JSON.parse(raw.toString("utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw Object.assign(new Error("Il corpo deve essere un oggetto JSON."), { status: 400 });
+    }
+    return value;
+  } catch (error) {
+    if (error.status) throw error;
+    throw Object.assign(new Error("JSON non valido."), { status: 400 });
+  }
+}
+
+function sameSecret(left, right) {
+  const a = Buffer.from(String(left));
+  const b = Buffer.from(String(right));
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
 function cleanCursor(value) {
   if (value == null || value === "") return undefined;
   const cursor = String(value);
-  if (cursor.length > 4000 || /[\u0000-\u001F]/.test(cursor)) {
+  if (cursor.length > 200 || /[\u0000-\u001F]/.test(cursor)) {
     throw Object.assign(new Error("Cursore non valido."), { status: 400 });
   }
   return cursor;
@@ -106,27 +114,15 @@ function cleanText(value) {
   return text;
 }
 
-function assertOwnConversation(conversation) {
-  if (normalizePhone(conversation?.business_phone_number) !== BUSINESS_NUMBER) {
-    throw Object.assign(
-      new Error("Questa conversazione non appartiene al numero +39 333 7802795."),
-      { status: 403 },
-    );
+function webhookForThisNumber(value, phoneNumberId) {
+  const metadata = value?.metadata || {};
+  const display = normalizePhone(metadata.display_phone_number);
+  if (display && display !== BUSINESS_NUMBER) return false;
+  if (phoneNumberId && metadata.phone_number_id && String(metadata.phone_number_id) !== String(phoneNumberId)) {
+    return false;
   }
-}
-
-async function ownConversation(client, conversationId) {
-  let conversation;
-  try {
-    conversation = await client.getConversation(conversationId);
-  } catch (error) {
-    if (error.status === 404) {
-      throw Object.assign(new Error("Conversazione non trovata."), { status: 404 });
-    }
-    throw error;
-  }
-  assertOwnConversation(conversation);
-  return conversation;
+  if (!display && phoneNumberId && String(metadata.phone_number_id) !== String(phoneNumberId)) return false;
+  return Boolean(display || metadata.phone_number_id);
 }
 
 async function serveStatic(res, publicDir, pathname) {
@@ -155,10 +151,59 @@ async function serveStatic(res, publicDir, pathname) {
   createReadStream(filePath).pipe(res);
 }
 
-export function createHandler({ client, publicDir }) {
+export function createHandler({ client, store, publicDir, appSecret, verifyToken, phoneNumberId }) {
   return async function handler(req, res) {
     const url = new URL(req.url || "/", "http://127.0.0.1");
     try {
+      if (url.pathname === "/webhook" && req.method === "GET") {
+        if (!verifyToken) {
+          sendJson(res, 503, { error: "Manca WHATSAPP_VERIFY_TOKEN." });
+          return;
+        }
+        const mode = url.searchParams.get("hub.mode");
+        const token = url.searchParams.get("hub.verify_token");
+        const challenge = url.searchParams.get("hub.challenge");
+        if (mode === "subscribe" && token && sameSecret(token, verifyToken) && challenge) {
+          res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+          res.end(challenge);
+          return;
+        }
+        sendJson(res, 403, { error: "Verifica del webhook rifiutata." });
+        return;
+      }
+
+      if (url.pathname === "/webhook" && req.method === "POST") {
+        if (!appSecret) {
+          sendJson(res, 503, { error: "Manca WHATSAPP_APP_SECRET." });
+          return;
+        }
+        const raw = await readRaw(req, 1_000_000);
+        const signature = req.headers["x-hub-signature-256"] || "";
+        const expected = `sha256=${createHmac("sha256", appSecret).update(raw).digest("hex")}`;
+        if (!sameSecret(signature, expected)) {
+          sendJson(res, 401, { error: "Firma del webhook non valida." });
+          return;
+        }
+        let payload;
+        try {
+          payload = JSON.parse(raw.toString("utf8"));
+        } catch {
+          sendJson(res, 400, { error: "JSON non valido." });
+          return;
+        }
+        if (payload?.object === "whatsapp_business_account") {
+          for (const entry of payload.entry || []) {
+            for (const change of entry.changes || []) {
+              if (change.field === "messages" && webhookForThisNumber(change.value, phoneNumberId)) {
+                await store.ingest(change.value);
+              }
+            }
+          }
+        }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/api/session") {
         const account = presentAccount(await client.confirmBusinessNumber());
         sendJson(res, 200, { account });
@@ -166,14 +211,14 @@ export function createHandler({ client, publicDir }) {
       }
 
       if (req.method === "GET" && url.pathname === "/api/conversations") {
-        const page = await client.listConversations({
+        const page = store.list({
           q: cleanQuery(url.searchParams.get("q")),
           startingAfter: cleanCursor(url.searchParams.get("starting_after")),
           limit: 30,
         });
         sendJson(res, 200, {
-          data: (page.data || []).map(presentConversation),
-          next_cursor: page.next_cursor || null,
+          data: page.data.map(presentConversation),
+          next_cursor: page.next_cursor,
         });
         return;
       }
@@ -186,22 +231,25 @@ export function createHandler({ client, publicDir }) {
           return;
         }
         const messagesRoute = url.pathname.endsWith("/messages");
+        const conversation = store.get(conversationId);
+        if (!conversation || normalizePhone(conversation.business_phone_number) !== BUSINESS_NUMBER) {
+          sendJson(res, 404, { error: "Conversazione non trovata." });
+          return;
+        }
 
         if (req.method === "GET" && !messagesRoute) {
-          const conversation = await ownConversation(client, conversationId);
           sendJson(res, 200, { conversation: presentConversation(conversation) });
           return;
         }
 
         if (req.method === "GET" && messagesRoute) {
-          await ownConversation(client, conversationId);
-          const page = await client.listMessages(conversationId, {
+          const page = store.listMessages(conversationId, {
             startingAfter: cleanCursor(url.searchParams.get("starting_after")),
             limit: 40,
           });
           sendJson(res, 200, {
-            data: (page.data || []).map(presentMessage),
-            next_cursor: page.next_cursor || null,
+            data: (page?.data || []).map(presentMessage),
+            next_cursor: page?.next_cursor || null,
           });
           return;
         }
@@ -216,26 +264,27 @@ export function createHandler({ client, publicDir }) {
             sendJson(res, 400, { error: "Chiave di invio non valida." });
             return;
           }
-
-          const account = await client.confirmBusinessNumber();
-          if (account.conversations_enabled === false) {
-            sendJson(res, 409, { error: "Le conversazioni non sono attive su questo numero." });
+          const replay = store.findSend(idempotencyKey);
+          if (replay) {
+            sendJson(res, 202, { message: presentMessage(replay) });
             return;
           }
-          const conversation = await ownConversation(client, conversationId);
-          if (conversation.service_window?.status !== "open") {
+
+          await client.confirmBusinessNumber();
+          const current = store.get(conversationId);
+          if (current?.service_window?.status !== "open") {
             sendJson(res, 422, {
               error: "La finestra di 24 ore è chiusa. Il testo libero si può inviare solo dopo un messaggio del contatto.",
             });
             return;
           }
-          const to = recipientAddress(conversation.recipient);
+          const to = normalizePhone(current.recipient?.phone_number);
           if (!to) {
             sendJson(res, 422, { error: "Questo contatto non ha un destinatario utilizzabile." });
             return;
           }
-
-          const sent = await client.sendText({ to, body: text, idempotencyKey });
+          const sent = await client.sendText({ to, body: text });
+          await store.addOutbound({ conversationId, message: sent, idempotencyKey });
           sendJson(res, 202, { message: presentMessage(sent) });
           return;
         }

@@ -64,6 +64,9 @@ export function presentMessage(message) {
     pushMedia(media, "interactive", "Messaggio interattivo");
     if (!textParts.length && asText(source.interactive.body_text)) textParts.push(source.interactive.body_text);
   }
+  if (source.reaction) {
+    pushMedia(media, "reaction", "Reazione", source.reaction.emoji);
+  }
   if (source.interactive_reply) {
     const reply = source.interactive_reply;
     const detail = asText(reply.title) || asText(reply.text) || asText(reply.id);
