@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="google" content="notranslate" />
+    <title>Messaggi WhatsApp</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <p class="eyebrow">WhatsApp Business</p>
+        <h1>Messaggi</h1>
+      </div>
+      <p id="account" class="account">Caricamento…</p>
+    </header>
+    <p id="banner" class="banner" role="alert" hidden></p>
+    <main class="layout" id="layout">
+      <section class="list-pane" id="list-pane" aria-label="Conversazioni">
+        <form id="search-form" role="search">
+          <label class="sr" for="q">Cerca nome o numero</label>
+          <input id="q" type="search" placeholder="Cerca nome o numero" autocomplete="off" />
+        </form>
+        <div id="conversation-state" class="pane-state">Caricamento conversazioni…</div>
+        <div id="conversation-list" class="conversation-list"></div>
+        <button id="more-conversations" class="text-button" type="button" hidden>Altre conversazioni</button>
+      </section>
+      <section class="thread-pane" id="thread-pane" aria-label="Conversazione">
+        <div id="thread-placeholder" class="placeholder">
+          <p>Seleziona una conversazione per leggere i messaggi.</p>
+        </div>
+        <div id="thread" hidden>
+          <header id="thread-head" class="thread-head"></header>
+          <div id="messages-wrap" class="messages-wrap">
+            <button id="older" class="text-button" type="button" hidden>Messaggi precedenti</button>
+            <div id="message-state" class="pane-state" hidden></div>
+            <ol id="messages" class="messages"></ol>
+          </div>
+          <form id="composer" class="composer">
+            <label class="sr" for="body">Messaggio</label>
+            <textarea id="body" rows="2" maxlength="4096" placeholder="Scrivi un messaggio"></textarea>
+            <div class="composer-bar">
+              <p id="composer-note" class="composer-note"></p>
+              <button id="send" type="submit">Invia</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
