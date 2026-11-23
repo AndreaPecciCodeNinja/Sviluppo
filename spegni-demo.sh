@@ -1,6 +1,8 @@
 #!/bin/bash
-# Ferma assistenza (3021), sincronia (3022), macchina (3023)
-# e Assistenza Tecnica Demo (3014).
+# Chiude i listener delle demo. Stesso elenco di ./avvia-demo.sh,
+# più il pannello sulla 3020, che viene chiuso per ultimo.
+# 3010 Hub portali, 3013 CRM Demo, 3014 Assistenza Tecnica,
+# 3021 Collegamento tablet, 3022 Sincronizzatore, 3023 Macchina simulata, 3020 Pannello.
 # Da macOS, nella cartella del repository: ./spegni-demo.sh
 
 set -u
@@ -58,7 +60,31 @@ $pid_file"
   echo "$nome ($porta) fermata."
 }
 
+ferma "hub" 3010
+ferma "crm" 3013
 ferma "assistenza-tecnica" 3014
 ferma "macchina" 3023
 ferma "sincronia" 3022
 ferma "assistenza" 3021
+
+# Il pannello sta eseguendo questo script: chiudilo dopo,
+# così la risposta può uscire prima che il listener 3020 cada.
+nohup bash -c '
+  sleep 0.6
+  pids="$(lsof -nP -iTCP:3020 -sTCP:LISTEN -t 2>/dev/null || true)"
+  if [ -z "$(printf "%s" "$pids" | tr -d "[:space:]")" ]; then
+    exit 0
+  fi
+  printf "%s\n" "$pids" | while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    kill "$pid" 2>/dev/null || true
+  done
+  sleep 0.5
+  rimasti="$(lsof -nP -iTCP:3020 -sTCP:LISTEN -t 2>/dev/null || true)"
+  printf "%s\n" "$rimasti" | while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    kill -9 "$pid" 2>/dev/null || true
+  done
+' >/dev/null 2>&1 &
+disown 2>/dev/null || true
+echo "Pannello (3020) in chiusura per ultimo."

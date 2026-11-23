@@ -1,6 +1,8 @@
 #!/bin/bash
-# Avvia assistenza (3021), sincronia (3022), macchina (3023)
-# e Assistenza Tecnica Demo (3014) in background.
+# Avvia lo stesso elenco che ./spegni-demo.sh chiude, senza il pannello.
+# 3010 Hub portali, 3013 CRM Demo, 3014 Assistenza Tecnica,
+# 3021 Collegamento tablet, 3022 Sincronizzatore, 3023 Macchina simulata.
+# Il pannello 3020 è già in esecuzione e non viene riavviato.
 # Da macOS, nella cartella del repository: ./avvia-demo.sh
 
 set -u
@@ -59,6 +61,42 @@ avvia() {
   echo "$nome su http://127.0.0.1:$porta/"
 }
 
+# Cartella e comando non sono in questo repository né nel workspace.
+# Restano vuoti: non si inventa un server. Spegni chiude comunque la porta.
+HUB_PORTALI_CARTELLA=""
+HUB_PORTALI_COMANDO=""
+CRM_DEMO_CARTELLA=""
+CRM_DEMO_COMANDO=""
+
+avvia_se_nota() {
+  nome="$1"
+  porta="$2"
+  cartella="$3"
+  comando="$4"
+  if in_ascolto "$porta"; then
+    echo "$nome è già in ascolto su http://127.0.0.1:$porta/"
+    return 0
+  fi
+  if [ -z "$cartella" ] || [ -z "$comando" ]; then
+    echo "$nome ($porta): percorso e comando non noti. Non viene avviata. Spegni le demo chiude comunque il listener."
+    return 0
+  fi
+  if [ ! -d "$cartella" ]; then
+    echo "$nome ($porta): cartella non trovata: $cartella"
+    return 0
+  fi
+  : > "$STATO/$nome.log"
+  (
+    cd "$cartella" || exit 1
+    nohup bash -lc "$comando" >>"$STATO/$nome.log" 2>&1 &
+    echo $! > "$STATO/$nome.pid"
+  )
+  if ! attendi "$porta" "$nome" "$nome" 80; then
+    return 1
+  fi
+  echo "$nome su http://127.0.0.1:$porta/"
+}
+
 avvia_assistenza_tecnica() {
   nome="assistenza-tecnica"
   porta=3014
@@ -88,8 +126,10 @@ avvia_assistenza_tecnica() {
 }
 
 cd "$ROOT"
+avvia_se_nota "hub" 3010 "$HUB_PORTALI_CARTELLA" "$HUB_PORTALI_COMANDO"
+avvia_se_nota "crm" 3013 "$CRM_DEMO_CARTELLA" "$CRM_DEMO_COMANDO"
 avvia "assistenza" 3021 "demo-assistenza/server.mjs" || exit 1
 avvia "sincronia" 3022 "demo-sincronia/server.mjs" || exit 1
 avvia "macchina" 3023 "demo-macchina/server.mjs" || exit 1
 avvia_assistenza_tecnica || exit 1
-echo "Demo avviata. Per fermarla: ./spegni-demo.sh"
+echo "Demo avviata. Il pannello sulla porta 3020 non è stato riavviato. Per fermarle: ./spegni-demo.sh"

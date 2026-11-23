@@ -76,7 +76,7 @@ Dalla cartella del repository. Su macOS è `~/Documents/Sviluppo`.
 ./spegni-demo.sh
 ```
 
-Il primo avvia in background l'assistenza sulla porta 3021, la sincronia sulla 3022 e la macchina sulla 3023. Il secondo le ferma. Serve `node` nel PATH. I log restano in `.demo/`.
+Il primo avvia in background il collegamento tablet sulla porta 3021, il sincronizzatore sulla 3022, la macchina sulla 3023 e Assistenza Tecnica sulla 3014. Hub portali (3010) e CRM Demo (3013) sono nello stesso elenco, ma partono solo se cartella e comando sono noti: in questo repository non ci sono. Il pannello sulla 3020 non viene riavviato. Il secondo chiude 3010, 3013, 3014, 3021, 3022, 3023 e, per ultimo, il listener 3020. Serve `node` nel PATH. I log restano in `.demo/`.
 
 ## Pannello demo
 
@@ -86,7 +86,7 @@ Pagina a parte, porta **3020**.
 node pannello-demo/server.mjs
 ```
 
-Apri http://127.0.0.1:3020/. **Avvia le demo** e **Spegni le demo** accendono e fermano assistenza (3021), sincronia (3022), macchina (3023) e Assistenza Tecnica Demo (3014). Accanto ai pulsanti, lo stato di ciascuna è «accesa» o «spenta» e si aggiorna da solo. Assistenza Tecnica Demo parte con `PORT=3014 npm start` dalla cartella `/Users/macair_andrea/Documents/ChatGPT/Progetto CRM/assistenza-demo-clone`. La porta 3011 resta libera.
+Apri http://127.0.0.1:3020/. **Avvia le demo** e **Spegni le demo** usano lo stesso elenco: Hub portali (3010), CRM Demo (3013), Assistenza Tecnica (3014), collegamento tablet (3021), sincronizzatore (3022) e macchina (3023). Il pannello è già in esecuzione e Avvia non lo riavvia. Spegni chiude anche il listener 3020, per ultimo. Hub e CRM non hanno cartella né comando in questo repository: Avvia non li accende, Spegni chiude il processo in ascolto. Assistenza Tecnica parte con `PORT=3014 npm start` dalla cartella `/Users/macair_andrea/Documents/ChatGPT/Progetto CRM/assistenza-demo-clone`. La porta 3011 resta libera.
 
 ## Demo Assistenza Tecnica
 

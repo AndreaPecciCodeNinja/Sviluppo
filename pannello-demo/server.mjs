@@ -9,10 +9,13 @@ const HOST = "127.0.0.1";
 const RADICE = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const SERVIZI = [
-  { id: "assistenza", nome: "Assistenza", porta: 3021 },
-  { id: "sincronia", nome: "Sincronia", porta: 3022 },
-  { id: "macchina", nome: "Macchina", porta: 3023 },
-  { id: "assistenza-tecnica", nome: "Assistenza Tecnica Demo", porta: 3014 },
+  { id: "hub", nome: "Hub portali", porta: 3010 },
+  { id: "crm", nome: "CRM Demo", porta: 3013 },
+  { id: "assistenza-tecnica", nome: "Assistenza Tecnica", porta: 3014 },
+  { id: "assistenza", nome: "Collegamento tablet", porta: 3021 },
+  { id: "sincronia", nome: "Sincronizzatore", porta: 3022 },
+  { id: "macchina", nome: "Macchina simulata", porta: 3023 },
+  { id: "pannello", nome: "Pannello", porta: 3020 },
 ];
 
 let comandoInCorso = null;
@@ -167,7 +170,7 @@ function pagina() {
 <body>
   <header>
     <h1>Pannello demo</h1>
-    <p>Avvia e spegne assistenza, sincronia, macchina e Assistenza Tecnica Demo. Lo stato di ciascuna si aggiorna da solo.</p>
+    <p>Avvia e spegne lo stesso elenco: Hub portali, CRM Demo, Assistenza Tecnica, collegamento tablet, sincronizzatore e macchina. Questo pannello è già in esecuzione e non viene riavviato. Spegni lo chiude per ultimo.</p>
   </header>
   <main>
     <section>
@@ -182,6 +185,11 @@ function pagina() {
       <h2>Stato</h2>
       <ul>${righe}</ul>
       <p class="nota" id="quando">Lettura dello stato in corso.</p>
+      <p class="nota">Avvia le demo accende 3014, 3021, 3022 e 3023. Hub portali (3010) e CRM Demo (3013) sono nello stesso elenco di Spegni, ma cartella e comando non sono in questo repository né nel workspace: si avviano solo se il percorso è noto. Nessun server è stato inventato. Il pannello sulla porta 3020 non viene riavviato. Spegni le demo chiude 3010, 3013, 3014, 3021, 3022 e 3023 e, per ultimo, il listener 3020.</p>
+    </section>
+    <section>
+      <h2>Hub portali e CRM Demo</h2>
+      <p>Porte 3010 e 3013. Non ci sono qui la cartella né il comando di avvio. <strong>Avvia le demo</strong> non le accende. <strong>Spegni le demo</strong> chiude il processo che è in ascolto, se c’è.</p>
     </section>
     <section>
       <h2>Assistenza Tecnica Demo</h2>
@@ -221,7 +229,7 @@ function pagina() {
       }
     }
 
-    async function lancia(url) {
+    async function lancia(url, spegnePannello) {
       if (comando) return;
       comando = true;
       for (const pulsante of pulsanti) pulsante.disabled = true;
@@ -232,7 +240,9 @@ function pagina() {
         esito.textContent = corpo.messaggio || "Comando terminato.";
         if (corpo.stato) disegna(corpo.stato);
       } catch {
-        esito.textContent = "Il pannello non ha risposto.";
+        esito.textContent = spegnePannello
+          ? "Demo spente. Il pannello si è chiuso."
+          : "Il pannello non ha risposto.";
       } finally {
         comando = false;
         for (const pulsante of pulsanti) pulsante.disabled = false;
@@ -240,8 +250,8 @@ function pagina() {
       }
     }
 
-    document.querySelector("#avvia").addEventListener("click", () => lancia("/api/avvia"));
-    document.querySelector("#spegni").addEventListener("click", () => lancia("/api/spegni"));
+    document.querySelector("#avvia").addEventListener("click", () => lancia("/api/avvia", false));
+    document.querySelector("#spegni").addEventListener("click", () => lancia("/api/spegni", true));
     aggiorna();
     setInterval(aggiorna, 2000);
   </script>
