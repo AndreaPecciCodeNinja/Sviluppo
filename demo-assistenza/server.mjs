@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const PORTA = 3012;
 const HOST = "127.0.0.1";
+const URL_SINCRO = process.env.SINCRO_INGRESSO || `http://${HOST}:${PORTA}/api/sincronia/ingresso`;
+const URL_SARA = process.env.SARA_URL || "http://127.0.0.1:3013/api/sara/dialogo";
 const RADICE = dirname(fileURLToPath(import.meta.url));
 const PERCORSO_SEED = join(RADICE, "seed.json");
 const CARTELLA_DATI = join(RADICE, "dati");
@@ -117,6 +119,8 @@ const server = createServer(async (richiesta, risposta) => {
       });
     }
 
+    if (await gestisciManutenzione(richiesta, risposta, url)) return;
+
     json(risposta, 404, { errore: "Percorso non trovato." });
   } catch (errore) {
     json(risposta, 500, { errore: "Errore del server demo." });
@@ -130,10 +134,13 @@ server.listen(PORTA, HOST, () => {
 
 async function carica() {
   try {
-    return JSON.parse(await readFile(PERCORSO_ARCHIVIO, "utf8"));
+    const archivio = JSON.parse(await readFile(PERCORSO_ARCHIVIO, "utf8"));
+    assicurati(archivio);
+    return archivio;
   } catch (errore) {
     if (errore.code !== "ENOENT") throw errore;
     const seed = JSON.parse(await readFile(PERCORSO_SEED, "utf8"));
+    assicurati(seed);
     await salva(seed);
     return seed;
   }
@@ -212,6 +219,7 @@ function applicaSincronizzazione(archivio, pacchetto) {
       }
     }
     applicaCampiMacchina(record, aggiornamento);
+    centralizzaTicketMacchina(archivio, record);
     ricevuti.push(ticketPerApp(record));
     ticketApplicati += 1;
   }
@@ -466,6 +474,357 @@ function html(risposta, codice, corpo) {
   risposta.end(dati);
 }
 
+function assicurati(archivio) {
+  if (archivio.modalitaSincronia !== "manuale") archivio.modalitaSincronia = "automatica";
+  if (!Array.isArray(archivio.tipologieCritiche) || archivio.tipologieCritiche.length === 0) {
+    archivio.tipologieCritiche = ["blocco di produzione", "rischio di blocco di produzione"];
+  }
+  if (!Array.isArray(archivio.tipologiePending) || archivio.tipologiePending.length === 0) {
+    archivio.tipologiePending = [
+      { id: "pend-tecnico", nome: "Problema tecnico" },
+      { id: "pend-assenza", nome: "Assenza dell'operatore" },
+      { id: "pend-ricambio", nome: "Attesa ricambio" },
+      { id: "pend-impianto", nome: "Indisponibilità dell'impianto" },
+    ];
+  }
+  archivio.pending = Array.isArray(archivio.pending) ? archivio.pending : [];
+  if (!Array.isArray(archivio.manuali) || archivio.manuali.length === 0) {
+    archivio.manuali = [{
+      id: "man-lavatrice",
+      tipoMacchina: "lavatrice-lavanderia",
+      titolo: "Manuale lavatrice industriale",
+      testo: "Avvio, dosaggio del sapone, controllo del cestello, arresto di sicurezza.",
+    }];
+  }
+  if (!Array.isArray(archivio.workflow) || archivio.workflow.length === 0) {
+    archivio.workflow = [{
+      tipoMacchina: "lavatrice-lavanderia",
+      passi: [
+        "Mettere in sicurezza la macchina",
+        "Verificare il parametro segnalato",
+        "Eseguire l'intervento previsto dal piano",
+        "Registrare l'esito e i consumi",
+      ],
+    }];
+  }
+  for (const chiave of ["inviiSincronia", "atteseConferma", "codaAssegnazioni", "dialogoAda", "riassegnazioni", "ingressoSincronia"]) {
+    if (!Array.isArray(archivio[chiave])) archivio[chiave] = [];
+  }
+  for (const ticket of archivio.ticket ?? []) centralizzaTicketMacchina(archivio, ticket);
+}
+
+function ticketMacchina(ticket) {
+  return ["programmato", "consumo", "anomalia", "critico"].includes(ticket?.origine);
+}
+
+function eCritica(archivio, ticket) {
+  const tipologia = String(ticket?.tipologia ?? "").trim().toLowerCase();
+  return (archivio.tipologieCritiche ?? []).some((voce) => String(voce).trim().toLowerCase() === tipologia);
+}
+
+function centralizzaTicketMacchina(archivio, ticket) {
+  if (!ticketMacchina(ticket)) return;
+  ticket.anomaliaRispettoAlPiano = ticket.anomaliaRispettoAlPiano === true;
+  ticket.statoGestione = eCritica(archivio, ticket) ? "ticket in gestione urgente" : "ordinario";
+}
+
+async function gestisciManutenzione(richiesta, risposta, url) {
+  const percorso = url.pathname;
+  if (richiesta.method === "GET" && percorso === "/api/sincronia/ingresso") {
+    const archivio = await carica();
+    return json(risposta, 200, { ingresso: archivio.ingressoSincronia, invii: archivio.inviiSincronia, attese: archivio.atteseConferma }), true;
+  }
+  if (richiesta.method === "GET" && percorso === "/api/macchine/ticket") {
+    const archivio = await carica();
+    return json(risposta, 200, { ticket: (archivio.ticket ?? []).filter(ticketMacchina).map((ticket) => ticketMacchinaPubblico(archivio, ticket)) }), true;
+  }
+  if (richiesta.method === "GET" && percorso === "/api/pending") {
+    const archivio = await carica();
+    return json(risposta, 200, { pending: archivio.pending.map((voce) => pendingPubblico(archivio, voce)), tipologie: archivio.tipologiePending }), true;
+  }
+  if (richiesta.method === "GET" && percorso === "/api/ada") {
+    const archivio = await carica();
+    return json(risposta, 200, { coda: archivio.codaAssegnazioni, dialogo: archivio.dialogoAda }), true;
+  }
+  if (richiesta.method === "POST" && percorso === "/api/sincronia/ingresso") {
+    const voce = await leggiOggetto(richiesta);
+    const archivio = await carica();
+    archivio.ingressoSincronia.unshift({ ...voce, ricevuto: new Date().toISOString() });
+    archivio.ingressoSincronia = archivio.ingressoSincronia.slice(0, 40);
+    await salva(archivio);
+    return json(risposta, 200, { messaggio: "Ticket ricevuto in sincronia.", id: voce.id }), true;
+  }
+  if (richiesta.method !== "POST") return false;
+
+  const archivio = await carica();
+  const campi = await leggiOggetto(richiesta);
+  const jsonRichiesto = vuoleJson(richiesta);
+
+  if (percorso === "/api/sincronia/modalita") {
+    archivio.modalitaSincronia = campi.modalita === "manuale" ? "manuale" : "automatica";
+    await salva(archivio);
+    return rispondi(risposta, jsonRichiesto, { modalita: archivio.modalitaSincronia });
+  }
+  if (percorso === "/api/sincronia/conferma") {
+    const esito = await confermaInvio(archivio, campi.id);
+    return rispondi(risposta, jsonRichiesto, esito, esito.ok ? 200 : 404);
+  }
+  if (percorso === "/api/ticket/nuovo") {
+    const titolo = String(campi.titolo ?? "").trim();
+    if (!titolo) return json(risposta, 400, { errore: "Manca il titolo." }), true;
+    const tecnico = tecnicoDi(archivio, campi.operatore);
+    const ticket = {
+      id: `tck-app-${randomUUID().slice(0, 8)}`,
+      titolo,
+      descrizione: String(campi.descrizione ?? "").trim(),
+      clienteId: tecnico ? clienteDellOperatore(archivio, tecnico.logon).id : "",
+      logonTecnico: "",
+      stato: "aperto",
+      priorita: "media",
+      aperto: new Date().toISOString(),
+      aggiornato: new Date().toISOString(),
+      risposte: [],
+      statoGestione: "ordinario",
+    };
+    archivio.ticket = Array.isArray(archivio.ticket) ? archivio.ticket : [];
+    archivio.ticket.unshift(ticket);
+    const esito = await partiVersoSincronia(archivio, "nuovo", ticket);
+    return rispondi(risposta, jsonRichiesto, { ticket, ...esito });
+  }
+  if (percorso === "/api/ticket/assegna") {
+    const ticket = (archivio.ticket ?? []).find((voce) => voce.id === campi.id);
+    const tecnico = tecnicoDi(archivio, campi.operatore);
+    if (!ticket || !tecnico) return json(risposta, 404, { errore: "Ticket o operatore sconosciuto." }), true;
+    ticket.logonTecnico = tecnico.logon;
+    ticket.aggiornato = new Date().toISOString();
+    centralizzaTicketMacchina(archivio, ticket);
+    accodaAda(archivio, ticket, tecnico);
+    await parlaConSara(archivio, `Assegnazione di ${ticket.id} a ${tecnico.nome}.`);
+    const esito = await partiVersoSincronia(archivio, "assegnazione", ticket);
+    return rispondi(risposta, jsonRichiesto, { ticket: ticketPerApp(ticket), ...esito });
+  }
+  if (percorso === "/api/interventi/scambia") {
+    const intervento = (archivio.interventi ?? []).find((voce) => voce.id === campi.id);
+    const tecnico = tecnicoDi(archivio, campi.operatore);
+    if (!intervento || !tecnico) return json(risposta, 404, { errore: "Intervento o operatore sconosciuto." }), true;
+    if (!intervento.logonTecnico) return json(risposta, 400, { errore: "L'intervento non è ancora assegnato." }), true;
+    const precedente = intervento.logonTecnico;
+    if (precedente === tecnico.logon) return json(risposta, 400, { errore: "Il tecnico è già assegnato." }), true;
+    intervento.logonTecnico = tecnico.logon;
+    intervento.aggiornato = new Date().toISOString();
+    archivio.riassegnazioni.unshift({
+      id: randomUUID(),
+      interventoId: intervento.id,
+      da: precedente,
+      a: tecnico.logon,
+      quando: intervento.aggiornato,
+    });
+    accodaAda(archivio, { id: intervento.id, titolo: intervento.titolo }, tecnico);
+    await parlaConSara(archivio, `Scambio tecnico sull'intervento ${intervento.id}: da ${precedente} a ${tecnico.nome}.`);
+    const esito = await partiVersoSincronia(archivio, "assegnazione", {
+      id: intervento.id,
+      titolo: intervento.titolo,
+      logonTecnico: tecnico.logon,
+      precedente,
+    });
+    return rispondi(risposta, jsonRichiesto, { interventoId: intervento.id, da: precedente, a: tecnico.logon, ...esito });
+  }
+  if (percorso === "/api/ticket/manuale") {
+    const ticket = (archivio.ticket ?? []).find((voce) => voce.id === campi.id);
+    const manuale = (archivio.manuali ?? []).find((voce) => voce.id === campi.manualeId);
+    if (!ticket || !manuale) return json(risposta, 404, { errore: "Ticket o manuale sconosciuto." }), true;
+    ticket.manualeId = manuale.id;
+    await salva(archivio);
+    return rispondi(risposta, jsonRichiesto, { id: ticket.id, manuale: manuale.titolo });
+  }
+  if (percorso === "/api/pending/tipologie/elimina") {
+    archivio.tipologiePending = archivio.tipologiePending.filter((voce) => voce.id !== campi.id);
+    await salva(archivio);
+    return rispondi(risposta, jsonRichiesto, { tipologie: archivio.tipologiePending });
+  }
+  if (percorso === "/api/pending/tipologie/aggiorna") {
+    const tipo = archivio.tipologiePending.find((voce) => voce.id === campi.id);
+    if (!tipo) return json(risposta, 404, { errore: "Tipologia sconosciuta." }), true;
+    tipo.nome = String(campi.nome ?? "").trim() || tipo.nome;
+    await salva(archivio);
+    return rispondi(risposta, jsonRichiesto, { tipologia: tipo });
+  }
+  if (percorso === "/api/pending/tipologie") {
+    const nome = String(campi.nome ?? "").trim();
+    if (!nome) return json(risposta, 400, { errore: "Manca il nome." }), true;
+    const tipo = { id: `pend-${randomUUID().slice(0, 8)}`, nome };
+    archivio.tipologiePending.push(tipo);
+    await salva(archivio);
+    return rispondi(risposta, jsonRichiesto, { tipologia: tipo });
+  }
+  if (percorso === "/api/pending/aggiorna") {
+    const voce = archivio.pending.find((pending) => pending.id === campi.id);
+    if (!voce || voce.archiviato) return json(risposta, 404, { errore: "Pending non modificabile." }), true;
+    if (campi.tipologiaId) {
+      voce.tipologiaId = campi.tipologiaId;
+      const tipo = archivio.tipologiePending.find((candidato) => candidato.id === campi.tipologiaId);
+      if (tipo) voce.tipologia = tipo.nome;
+    }
+    if (campi.nota != null) voce.nota = String(campi.nota);
+    voce.aggiornato = new Date().toISOString();
+    await salva(archivio);
+    return rispondi(risposta, jsonRichiesto, { pending: pendingPubblico(archivio, voce) });
+  }
+  if (percorso === "/api/pending/archivia") {
+    const voce = archivio.pending.find((pending) => pending.id === campi.id);
+    if (!voce) return json(risposta, 404, { errore: "Pending sconosciuto." }), true;
+    voce.archiviato = true;
+    voce.archiviatoIl = new Date().toISOString();
+    await salva(archivio);
+    return rispondi(risposta, jsonRichiesto, { pending: pendingPubblico(archivio, voce) });
+  }
+  if (percorso === "/api/pending") {
+    const tipo = archivio.tipologiePending.find((voce) => voce.id === campi.tipologiaId);
+    if (!tipo) return json(risposta, 400, { errore: "Tipologia di pending sconosciuta." }), true;
+    const voce = {
+      id: `pending-${randomUUID().slice(0, 8)}`,
+      tipologiaId: tipo.id,
+      tipologia: tipo.nome,
+      nota: String(campi.nota ?? "").trim(),
+      riferimento: String(campi.riferimento ?? "").trim(),
+      archiviato: false,
+      creato: new Date().toISOString(),
+      aggiornato: new Date().toISOString(),
+    };
+    archivio.pending.unshift(voce);
+    await salva(archivio);
+    return rispondi(risposta, jsonRichiesto, { pending: pendingPubblico(archivio, voce) });
+  }
+  if (percorso === "/api/tipologie-critiche") {
+    const nome = String(campi.nome ?? "").trim();
+    if (!nome) return json(risposta, 400, { errore: "Manca la tipologia." }), true;
+    if (!eCritica(archivio, { tipologia: nome })) archivio.tipologieCritiche.push(nome);
+    await salva(archivio);
+    return rispondi(risposta, jsonRichiesto, { tipologieCritiche: archivio.tipologieCritiche });
+  }
+  return false;
+}
+
+function accodaAda(archivio, ticket, tecnico) {
+  archivio.codaAssegnazioni.unshift({
+    id: randomUUID(),
+    ticketId: ticket.id,
+    titolo: ticket.titolo,
+    logon: tecnico.logon,
+    nome: tecnico.nome,
+    quando: new Date().toISOString(),
+    stato: "in_coda",
+  });
+  archivio.codaAssegnazioni = archivio.codaAssegnazioni.slice(0, 30);
+}
+
+async function parlaConSara(archivio, testo) {
+  let rispostaSara = "Sara non è ancora in ascolto. La coda resta sull'applicazione.";
+  try {
+    const risposta = await fetch(URL_SARA, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ da: "ada", testo }),
+      signal: AbortSignal.timeout(800),
+    });
+    if (risposta.ok) rispostaSara = "Sara ha ricevuto il messaggio.";
+  } catch {
+    rispostaSara = "Sara non è ancora in ascolto. La coda resta sull'applicazione.";
+  }
+  archivio.dialogoAda.unshift({ id: randomUUID(), quando: new Date().toISOString(), testo, risposta: rispostaSara });
+  archivio.dialogoAda = archivio.dialogoAda.slice(0, 20);
+}
+
+async function partiVersoSincronia(archivio, evento, soggetto) {
+  const voce = { id: randomUUID(), evento, quando: new Date().toISOString(), soggetto: { ...soggetto, risposte: undefined } };
+  if (archivio.modalitaSincronia === "manuale") {
+    archivio.atteseConferma.push(voce);
+    await salva(archivio);
+    return { ok: true, partito: false, inAttesa: true, id: voce.id };
+  }
+  await salva(archivio);
+  return completaInvio(voce);
+}
+
+async function confermaInvio(archivio, id) {
+  const indice = archivio.atteseConferma.findIndex((voce) => voce.id === id);
+  if (indice < 0) return { ok: false, errore: "Nessun invio in attesa con questo id." };
+  const [voce] = archivio.atteseConferma.splice(indice, 1);
+  await salva(archivio);
+  return completaInvio(voce);
+}
+
+async function completaInvio(voce) {
+  let partito = false;
+  try {
+    const risposta = await fetch(URL_SINCRO, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(voce),
+    });
+    partito = risposta.ok;
+  } catch {
+    partito = false;
+  }
+  const archivio = await carica();
+  if (partito) {
+    const ticket = (archivio.ticket ?? []).find((candidato) => candidato.id === voce.soggetto?.id);
+    if (ticket) ticket.etichettaSincronia = "sincronizzato correttamente";
+    archivio.inviiSincronia.unshift({ ...voce, esito: "inviato" });
+  } else {
+    archivio.atteseConferma.push(voce);
+  }
+  archivio.inviiSincronia = archivio.inviiSincronia.slice(0, 30);
+  await salva(archivio);
+  return { ok: partito, partito, inAttesa: !partito, id: voce.id };
+}
+
+function pendingPubblico(archivio, voce) {
+  const tipo = archivio.tipologiePending.find((candidato) => candidato.id === voce.tipologiaId);
+  return { ...voce, tipologia: tipo?.nome ?? voce.tipologia ?? voce.tipologiaId };
+}
+
+function ticketMacchinaPubblico(archivio, ticket) {
+  const manuale = archivio.manuali.find((voce) => voce.id === ticket.manualeId);
+  const flusso = archivio.workflow.find((voce) => voce.tipoMacchina === ticket.tipoMacchina);
+  return {
+    ...ticketPerApp(ticket),
+    statoGestione: ticket.statoGestione,
+    etichettaSincronia: ticket.etichettaSincronia ?? null,
+    manuale: manuale?.titolo ?? null,
+    workflow: flusso?.passi ?? [],
+  };
+}
+
+async function leggiOggetto(richiesta) {
+  const corpo = await leggiCorpo(richiesta);
+  const tipo = String(richiesta.headers["content-type"] ?? "");
+  if (tipo.includes("application/json")) {
+    try {
+      return JSON.parse(corpo || "{}");
+    } catch {
+      return {};
+    }
+  }
+  return Object.fromEntries(new URLSearchParams(corpo));
+}
+
+function vuoleJson(richiesta) {
+  const tipo = String(richiesta.headers["content-type"] ?? "");
+  const accept = String(richiesta.headers.accept ?? "");
+  return tipo.includes("application/json") || accept.includes("application/json");
+}
+
+function rispondi(risposta, jsonRichiesto, corpo, codice = 200) {
+  if (!jsonRichiesto) {
+    risposta.writeHead(303, { Location: "/#predittiva", "Cache-Control": "no-store" });
+    risposta.end();
+    return true;
+  }
+  json(risposta, codice, corpo);
+  return true;
+}
+
 function pagina(archivio, scelta) {
   const tecnici = archivio.tecnici ?? [];
   const operatore = tecnici.find((tecnico) => tecnico.logon === normalizza(scelta.operatore)) ?? tecnici[0];
@@ -527,6 +886,11 @@ function pagina(archivio, scelta) {
     nav.schede a { text-decoration: none; padding: 10px 16px; border-radius: 999px; background: #efeae2; color: #1c2430; }
     nav.schede a.attiva { background: #0e4d5d; color: white; }
     .avviso { background: #e5f4f1; border-radius: 12px; padding: 12px 14px; }
+    .nuovo { display: inline-block; margin-left: 8px; background: #b45309; color: white; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; vertical-align: middle; }
+    .urgente { color: #9a3412; font-weight: 700; }
+    .ok { color: #1f7a4d; font-weight: 700; }
+    form.riga { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0; }
+    input, select.campo { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #d5cec3; }
   </style>
 </head>
 <body>
@@ -571,6 +935,7 @@ function pagina(archivio, scelta) {
       <p class="meta">Completati sul server per questo operatore. L'iPad li scarica da Ticket, con Scarica eseguiti.</p>
       ${elencoEseguiti || "<p class=\"meta\">Nessun ticket eseguito. Usa «Completa un ticket di prova».</p>"}
     </section>
+    ${sezionePredittiva(archivio)}
     <section>
       <h2>Aggiornamenti arrivati dall'iPad</h2>
       ${aggiornamenti ? `<ul>${aggiornamenti}</ul>` : "<p class=\"meta\">Nessun invio ancora.</p>"}
@@ -599,6 +964,108 @@ function schedaTicket(archivio, ticket, scheda) {
 
 function nomeCliente(archivio, id) {
   return (archivio.clienti ?? []).find((voce) => voce.id === id)?.nome || id || "";
+}
+
+function sezionePredittiva(archivio) {
+  const macchine = (archivio.ticket ?? []).filter(ticketMacchina);
+  const elenco = macchine.map((ticket) => {
+    const manuali = archivio.manuali.filter((manuale) => !ticket.tipoMacchina || manuale.tipoMacchina === ticket.tipoMacchina);
+    const opzioni = manuali.map((manuale) => `<option value="${escape(manuale.id)}"${manuale.id === ticket.manualeId ? " selected" : ""}>${escape(manuale.titolo)}</option>`).join("");
+    const flusso = archivio.workflow.find((voce) => voce.tipoMacchina === ticket.tipoMacchina);
+    const passi = (flusso?.passi ?? []).map((passo, indice) => `<li>${indice + 1}. ${escape(passo)}</li>`).join("");
+    const anomalia = ticket.anomaliaRispettoAlPiano ? "Anomalia rispetto al piano" : "Nel piano";
+    const urgente = ticket.statoGestione === "ticket in gestione urgente";
+    return `<article>
+      <h3>${escape(ticket.titolo)} <span class="nuovo">Nuovo</span></h3>
+      <p class="meta">${escape(ticket.macchina || "")} · ${escape(ticket.tipoMacchina || "")} · origine ${escape(ticket.origine)} · ${escape(anomalia)}</p>
+      <p class="${urgente ? "urgente" : "meta"}">${escape(ticket.statoGestione || "ordinario")}${ticket.etichettaSincronia ? ` · <span class="ok">${escape(ticket.etichettaSincronia)}</span>` : ""}</p>
+      <form class="riga" method="post" action="/api/ticket/manuale">
+        <input type="hidden" name="id" value="${escape(ticket.id)}">
+        <label>Manuale <select class="campo" name="manualeId">${opzioni}</select></label>
+        <button type="submit">Allega il manuale</button>
+      </form>
+      ${passi ? `<p class="meta">Workflow della macchina</p><ol>${passi}</ol>` : ""}
+    </article>`;
+  }).join("");
+  const tecnici = (archivio.tecnici ?? []).map((tecnico) => `<option value="${escape(tecnico.logon)}">${escape(tecnico.nome)}</option>`).join("");
+  const interventi = (archivio.interventi ?? []).filter((voce) => voce.logonTecnico).map((voce) => `<option value="${escape(voce.id)}">${escape(voce.titolo)} · ${escape(voce.logonTecnico)}</option>`).join("");
+  const tipiPending = archivio.tipologiePending.map((tipo) => `<li>${escape(tipo.nome)} <span class="meta">${escape(tipo.id)}</span></li>`).join("");
+  const opzioniTipi = archivio.tipologiePending.map((tipo) => `<option value="${escape(tipo.id)}">${escape(tipo.nome)}</option>`).join("");
+  const pending = archivio.pending.map((voce) => {
+    const pubblico = pendingPubblico(archivio, voce);
+    return `<li>${escape(pubblico.tipologia)} · ${escape(pubblico.nota || "senza nota")} · ${pubblico.archiviato ? "archiviato" : "aperto"} <span class="meta">${escape(pubblico.id)}</span></li>`;
+  }).join("");
+  const coda = archivio.codaAssegnazioni.slice(0, 6).map((voce) => `<li>${escape(voce.titolo || voce.ticketId)} → ${escape(voce.nome)}</li>`).join("");
+  const dialogo = archivio.dialogoAda.slice(0, 4).map((voce) => `<li>${escape(voce.testo)} <span class="meta">${escape(voce.risposta)}</span></li>`).join("");
+  const critiche = archivio.tipologieCritiche.map((voce) => `<li>${escape(voce)}</li>`).join("");
+  const modalita = archivio.modalitaSincronia;
+  return `<section id="predittiva">
+    <h2>Manutenzione predittiva <span class="nuovo">Nuovo</span></h2>
+    <p class="meta">Ticket della macchina, con origine e segno di anomalia rispetto al piano. Le parti aggiunte portano il contrassegno Nuovo.</p>
+    ${elenco || "<p class=\"meta\">Nessun ticket della macchina ancora. Partono dalla lavatrice simulata.</p>"}
+    <h3>Invio alla sincronia <span class="nuovo">Nuovo</span></h3>
+    <p class="meta">Modalità attuale: ${escape(modalita)}. In automatico un ticket nuovo o assegnato parte subito. In manuale parte dopo Conferma invio.</p>
+    ${(archivio.inviiSincronia ?? []).slice(0, 5).map((voce) => `<p class="ok">${escape(voce.evento)} · ${escape(voce.soggetto?.titolo || voce.soggetto?.id || "")} · sincronizzato correttamente</p>`).join("")}
+    <form class="riga" method="post" action="/api/sincronia/modalita">
+      <input type="hidden" name="modalita" value="${modalita === "automatica" ? "manuale" : "automatica"}">
+      <button class="secondario" type="submit">Passa a ${modalita === "automatica" ? "manuale" : "automatica"}</button>
+    </form>
+    <form class="riga" method="post" action="/api/ticket/nuovo">
+      <label>Nuovo ticket <input name="titolo" placeholder="Titolo" required></label>
+      <button type="submit">Crea e invia</button>
+    </form>
+    <form class="riga" method="post" action="/api/ticket/assegna">
+      <label>Ticket <input name="id" placeholder="id ticket" required></label>
+      <label>Operatore <select class="campo" name="operatore">${tecnici}</select></label>
+      <button type="submit">Assegna</button>
+    </form>
+    ${(archivio.atteseConferma ?? []).map((voce) => `<form class="riga" method="post" action="/api/sincronia/conferma"><input type="hidden" name="id" value="${escape(voce.id)}"><button type="submit">Conferma invio ${escape(voce.evento)}</button></form>`).join("")}
+    <h3>Scambio del tecnico <span class="nuovo">Nuovo</span></h3>
+    <form class="riga" method="post" action="/api/interventi/scambia">
+      <label>Intervento già assegnato <select class="campo" name="id">${interventi}</select></label>
+      <label>Nuovo tecnico <select class="campo" name="operatore">${tecnici}</select></label>
+      <button type="submit">Scambia</button>
+    </form>
+    <h3>Tipologie di pending <span class="nuovo">Nuovo</span></h3>
+    <ul>${tipiPending}</ul>
+    <form class="riga" method="post" action="/api/pending/tipologie">
+      <input name="nome" placeholder="Nuova tipologia" required>
+      <button type="submit">Crea tipologia</button>
+    </form>
+    <form class="riga" method="post" action="/api/pending/tipologie/aggiorna">
+      <select class="campo" name="id">${opzioniTipi}</select>
+      <input name="nome" placeholder="Nome aggiornato" required>
+      <button type="submit">Modifica tipologia</button>
+    </form>
+    <form class="riga" method="post" action="/api/pending/tipologie/elimina">
+      <select class="campo" name="id">${opzioniTipi}</select>
+      <button type="submit">Elimina tipologia</button>
+    </form>
+    <h3>Pending <span class="nuovo">Nuovo</span></h3>
+    ${pending ? `<ul>${pending}</ul>` : "<p class=\"meta\">Nessun pending.</p>"}
+    <form class="riga" method="post" action="/api/pending">
+      <select class="campo" name="tipologiaId">${opzioniTipi}</select>
+      <input name="nota" placeholder="Nota">
+      <input name="riferimento" placeholder="Ticket o intervento">
+      <button type="submit">Crea pending</button>
+    </form>
+    <form class="riga" method="post" action="/api/pending/aggiorna">
+      <input name="id" placeholder="id pending" required>
+      <select class="campo" name="tipologiaId">${opzioniTipi}</select>
+      <input name="nota" placeholder="Nota aggiornata">
+      <button type="submit">Modifica</button>
+    </form>
+    <form class="riga" method="post" action="/api/pending/archivia">
+      <input name="id" placeholder="id pending" required>
+      <button type="submit">Archivia</button>
+    </form>
+    <h3>Tipologie critiche <span class="nuovo">Nuovo</span></h3>
+    <ul>${critiche}</ul>
+    <h3>Agente Ada <span class="nuovo">Nuovo</span></h3>
+    <p class="meta">Quando un ticket viene assegnato, Ada lo mette in coda verso la sincronia e avvisa Sara.</p>
+    ${coda ? `<ul>${coda}</ul>` : "<p class=\"meta\">Coda vuota.</p>"}
+    ${dialogo ? `<ul>${dialogo}</ul>` : ""}
+  </section>`;
 }
 
 function escape(valore) {

@@ -99,6 +99,8 @@ node demo-macchina/server.mjs
 
 Poi apri http://127.0.0.1:3014/. Le parti nuove sono segnate con **Nuovo**.
 
+Sulla demo, in **Manutenzione predittiva**, i ticket della macchina mostrano origine e anomalia rispetto al piano. Un ticket nuovo o assegnato parte verso la sincronia: subito in modalità automatica, dopo **Conferma invio** in modalità manuale. Lo stato critico è «ticket in gestione urgente» e, a invio riuscito, compare «sincronizzato correttamente». Da lì si scambia il tecnico di un intervento già assegnato, si gestiscono le tipologie di pending, si allega il manuale e si legge il workflow della macchina. Ada mette l'assegnazione in coda e scrive a Sara.
+
 ## Dati sul dispositivo
 
 L'archivio è un JSON nella cartella Application Support dell'app. Chiudere l'app e riaprirla, anche senza rete, conserva interventi, note, ticket e risposte.
