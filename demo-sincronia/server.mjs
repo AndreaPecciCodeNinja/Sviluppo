@@ -130,56 +130,136 @@ async function gestisci(richiesta, risposta) {
   return json(risposta, 404, { errore: "Percorso non trovato." });
 }
 
-async function riceviDallaMacchina(archivio, pacchetto) {
-  const logon = normalizza(pacchetto?.tecnico?.logon || pacchetto?.tecnico?.id);
-  if (!logon || !Array.isArray(pacchetto.ticket)) return { ok: false, errore: "Servono il tecnico e i ticket." };
-  const preparato = {
-    ...pacchetto,
-    ticket: pacchetto.ticket.map((ticket) => ({
-      ...ticket,
-      segnalazioneIpad: eCritica(archivio, ticket.tipologia),
-    })),
-  };
-  for (const ticket of preparato.ticket) {
-    archivio.ticket[ticket.id] = {
-      id: ticket.id,
-      titolo: ticket.titolo,
+function titoloMovimento(voce) {
+  const titolo = String(voce?.titolo || "").trim();
+  const codice = String(voce?.codice || "").trim();
+  if (titolo && codice && !titolo.includes(codice)) return `${titolo} · ${codice}`;
+  return titolo || codice || String(voce?.id || "");
+}
+
+function mettiSulTablet(archivio, voce) {
+  const logon = normalizza(voce.logon);
+  const id = String(voce.id || "").trim();
+  if (!logon || !id) return false;
+  const genere = voce.genere === "intervento" ? "intervento" : "ticket";
+  for (const [altro, altraCoda] of Object.entries(archivio.tablet)) {
+    if (altro === logon) continue;
+    altraCoda.ticket = (altraCoda.ticket ?? []).filter((candidato) => candidato.id !== id);
+    altraCoda.interventi = (altraCoda.interventi ?? []).filter((candidato) => candidato.id !== id);
+  }
+  const coda = assicuratiCoda(archivio, logon);
+  const destinazione = genere === "intervento" ? coda.interventi : coda.ticket;
+  if (!destinazione.some((candidato) => candidato.id === id)) {
+    destinazione.unshift({
+      id,
+      codice: voce.codice || "",
+      titolo: voce.titolo || id,
+      stato: voce.stato || (genere === "ticket" ? "aperto" : "programmato"),
+      segnalazioneImmediata: voce.segnalazioneImmediata === true,
+      genere,
+      quando: new Date().toISOString(),
+    });
+  }
+  if (genere === "intervento") {
+    archivio.interventi[id] = {
+      ...(archivio.interventi[id] ?? {}),
+      id,
+      codice: voce.codice || archivio.interventi[id]?.codice,
+      titolo: voce.titolo || archivio.interventi[id]?.titolo || id,
       logon,
-      origine: ticket.origine ?? null,
-      tipologia: ticket.tipologia ?? null,
-      anomaliaRispettoAlPiano: ticket.anomaliaRispettoAlPiano === true,
-      stato: ticket.stato || "aperto",
-      segnalazioneIpad: ticket.segnalazioneIpad === true,
-      inoltrato: false,
-      pacchetto: pacchettoDelTicket(preparato, ticket, logon),
+      clienteId: voce.clienteId || archivio.interventi[id]?.clienteId || "",
+      stato: voce.stato || archivio.interventi[id]?.stato || "programmato",
+      sospeso: false,
     };
+  } else {
+    archivio.ticket[id] = {
+      ...(archivio.ticket[id] ?? {}),
+      id,
+      codice: voce.codice || archivio.ticket[id]?.codice,
+      titolo: voce.titolo || archivio.ticket[id]?.titolo || id,
+      logon,
+      clienteId: voce.clienteId || archivio.ticket[id]?.clienteId || "",
+      stato: voce.stato || archivio.ticket[id]?.stato || "aperto",
+      sulTablet: logon,
+    };
+  }
+  memorizzaMovimento(archivio, {
+    tipo: "tablet",
+    titolo: titoloMovimento(voce),
+    logon,
+    clienteId: voce.clienteId || "",
+    soggettoId: id,
+  });
+  return true;
+}
+
+async function riceviDallaMacchina(archivio, pacchetto) {
+  const elenco = Array.isArray(pacchetto?.ticket) ? pacchetto.ticket : (pacchetto?.ticket ? [pacchetto.ticket] : []);
+  const scelto = await risolviOperatoreScelto(operatoreScelto(pacchetto, pacchetto?.tecnico || pacchetto || {}));
+  if (!scelto.logon || elenco.length === 0) {
+    const motivo = scelto.motivo || "Sincronizzazione non riuscita: servono il tecnico e i ticket. Il tablet non è stato modificato.";
+    memorizzaMovimento(archivio, { tipo: "sincronizzazione", titolo: motivo, logon: scelto.logon || "" });
+    await salva(archivio);
+    return { ok: false, errore: motivo };
+  }
+  const logon = scelto.logon;
+  const preparati = [];
+  for (const ticket of elenco) {
+    const id = String(ticket?.id || ticket?.codice || "").trim();
+    if (!id) continue;
+    const precedente = archivio.ticket[id] ?? {};
+    const codice = String(ticket.codice || precedente.codice || "").trim();
+    const titolo = String(ticket.titolo || precedente.titolo || codice || id).trim();
+    const nomeCliente = ticket.cliente || ticket.clienteNome || precedente.cliente || "";
+    const clienteId = String(ticket.clienteId || precedente.clienteId || await clienteIdDalNome(nomeCliente)).trim();
+    const critica = eCritica(archivio, ticket.tipologia);
+    const record = {
+      ...precedente,
+      id,
+      codice,
+      titolo,
+      logon,
+      clienteId,
+      cliente: nomeCliente,
+      origine: ticket.origine ?? precedente.origine ?? null,
+      tipologia: ticket.tipologia ?? precedente.tipologia ?? null,
+      anomaliaRispettoAlPiano: ticket.anomaliaRispettoAlPiano === true,
+      stato: ticket.stato || precedente.stato || "aperto",
+      segnalazioneIpad: critica || precedente.segnalazioneIpad === true,
+      sulTablet: logon,
+      inoltrato: false,
+    };
+    record.pacchetto = pacchettoDelTicket(pacchetto, { ...ticket, id, codice, titolo, clienteId, stato: record.stato }, logon);
+    archivio.ticket[id] = record;
+    mettiSulTablet(archivio, { ...record, genere: "ticket", segnalazioneImmediata: critica });
+    preparati.push(record);
+  }
+  if (preparati.length === 0) {
+    const motivo = "Sincronizzazione non riuscita: i ticket non hanno un id. Il tablet non è stato modificato.";
+    memorizzaMovimento(archivio, { tipo: "sincronizzazione", titolo: motivo, logon });
+    await salva(archivio);
+    return { ok: false, errore: motivo };
   }
   await salva(archivio);
   const attese = [];
-  for (const ticket of preparato.ticket) {
+  for (const ticket of preparati) {
     attese.push(await pianifica(archivio, {
       tipo: "applicazione",
       immediata: false,
       pacchetto: archivio.ticket[ticket.id].pacchetto,
-      titolo: ticket.titolo,
+      titolo: titoloMovimento(ticket),
+      logon,
+      clienteId: ticket.clienteId,
+      soggettoId: ticket.id,
     }));
-    if (ticket.segnalazioneIpad) {
-      attese.push(await pianifica(archivio, {
-        tipo: "tablet",
-        immediata: true,
-        logon,
-        voce: { id: ticket.id, titolo: ticket.titolo, stato: ticket.stato || "aperto", segnalazioneImmediata: true, genere: "ticket" },
-        titolo: ticket.titolo,
-      }));
-    }
   }
   const report = archivio.modalita === "automatica" ? await verificaSara() : null;
   return {
     ok: true,
     messaggio: archivio.modalita === "automatica"
-      ? "Ticket ricevuto e inoltrato all'applicazione."
-      : "Ticket ricevuto. L'inoltro parte dopo la conferma.",
-    ricevuti: preparato.ticket.map((ticket) => ({ id: ticket.id, segnalazioneIpad: ticket.segnalazioneIpad })),
+      ? "Ticket messo sul tablet e inoltrato all'applicazione."
+      : "Ticket messo sul tablet. L'inoltro all'applicazione parte dopo la conferma.",
+    ricevuti: preparati.map((ticket) => ({ id: ticket.id, codice: ticket.codice, logon, segnalazioneIpad: ticket.segnalazioneIpad })),
     attese,
     report,
   };
@@ -454,6 +534,12 @@ async function rifiutaAssegnazione(archivio, voce) {
     quando: new Date().toISOString(),
   });
   archivio.rifiuti = archivio.rifiuti.slice(0, 20);
+  memorizzaMovimento(archivio, {
+    tipo: "sincronizzazione",
+    titolo: `${motivo}${voce.codice ? ` · ${voce.codice}` : ""}`,
+    logon: "",
+    soggettoId: voce.id || "",
+  });
   await salva(archivio);
   await avvisaApplicazione({
     id: voce.id || "",
@@ -736,77 +822,23 @@ function normalizzaVoceAssegnata(genere, voce) {
   };
 }
 
+function daMettereSulTablet(genere, voce) {
+  if (genere === "ticket") return voce?.daInviare === true || Boolean(String(voce?.codice || "").trim());
+  return Boolean(String(voce?.codice || "").trim()) && voce?.sospeso !== true;
+}
+
 function raccogliAssegnati(archivio, remoto) {
   const perId = new Map();
   const aggiungi = (genere, voce) => {
+    if (!daMettereSulTablet(genere, voce)) return;
     const normale = normalizzaVoceAssegnata(genere, voce);
     if (!normale) return;
     perId.set(`${genere}:${normale.id}`, normale);
   };
   for (const voce of remoto?.ticket ?? []) aggiungi("ticket", voce);
-  for (const voce of remoto?.interventi ?? []) aggiungi("intervento", voce);
   for (const voce of Object.values(archivio.ticket ?? {})) aggiungi("ticket", voce);
   for (const voce of Object.values(archivio.interventi ?? {})) aggiungi("intervento", voce);
   return [...perId.values()];
-}
-
-function conto(numero, uno, molti) {
-  return `${numero} ${numero === 1 ? uno : molti}`;
-}
-
-function titoloSincronizzazione(modalita, elenco) {
-  const interventi = elenco.filter((voce) => voce.genere === "intervento").length;
-  const ticket = elenco.filter((voce) => voce.genere === "ticket").length;
-  const codici = [...new Set(elenco.map((voce) => voce.codice).filter(Boolean))];
-  const codiciTesto = codici.length ? ` · ${codici.join(", ")}` : "";
-  return `Sincronizzazione ${modalita} · ${conto(interventi, "intervento", "interventi")}, ${conto(ticket, "ticket", "ticket")}${codiciTesto}`;
-}
-
-function applicaSulTablet(archivio, logon, elenco) {
-  const coda = assicuratiCoda(archivio, logon);
-  for (const voce of elenco) {
-    for (const [altro, altraCoda] of Object.entries(archivio.tablet)) {
-      if (altro === logon) continue;
-      altraCoda.ticket = (altraCoda.ticket ?? []).filter((candidato) => candidato.id !== voce.id);
-      altraCoda.interventi = (altraCoda.interventi ?? []).filter((candidato) => candidato.id !== voce.id);
-    }
-    const destinazione = voce.genere === "intervento" ? coda.interventi : coda.ticket;
-    if (!destinazione.some((candidato) => candidato.id === voce.id)) {
-      destinazione.unshift({
-        id: voce.id,
-        codice: voce.codice,
-        titolo: voce.titolo,
-        stato: voce.stato,
-        segnalazioneImmediata: false,
-        genere: voce.genere,
-        quando: new Date().toISOString(),
-      });
-    }
-    if (voce.genere === "ticket") {
-      archivio.ticket[voce.id] = {
-        ...(archivio.ticket[voce.id] ?? {}),
-        id: voce.id,
-        codice: voce.codice || archivio.ticket[voce.id]?.codice,
-        titolo: voce.titolo,
-        logon,
-        clienteId: voce.clienteId || archivio.ticket[voce.id]?.clienteId || "",
-        stato: voce.stato,
-        sulTablet: logon,
-        inoltrato: true,
-      };
-    } else {
-      archivio.interventi[voce.id] = {
-        ...(archivio.interventi[voce.id] ?? {}),
-        id: voce.id,
-        codice: voce.codice || archivio.interventi[voce.id]?.codice,
-        titolo: voce.titolo,
-        logon,
-        clienteId: voce.clienteId || archivio.interventi[voce.id]?.clienteId || "",
-        stato: voce.stato,
-        sospeso: false,
-      };
-    }
-  }
 }
 
 function memorizzaMovimento(archivio, voce) {
@@ -839,22 +871,15 @@ async function sincronizza(archivio) {
   }
   const movimenti = [];
   if (perTecnico.size === 0) {
-    const titolo = `Sincronizzazione ${archivio.modalita} · nessuna assegnazione da mettere sul tablet`;
+    const titolo = `Sincronizzazione ${archivio.modalita} · nessun ticket assegnato da mettere sul tablet`;
     memorizzaMovimento(archivio, { tipo: "sincronizzazione", titolo, logon: "" });
     movimenti.push(titolo);
   }
-  for (const [logon, elenco] of perTecnico) {
-    applicaSulTablet(archivio, logon, elenco);
-    const titolo = titoloSincronizzazione(archivio.modalita, elenco);
-    const soggetto = elenco.find((voce) => voce.codice === "TK-2026-0031") || elenco[0];
-    memorizzaMovimento(archivio, {
-      tipo: "sincronizzazione",
-      titolo,
-      logon,
-      clienteId: soggetto?.clienteId || "",
-      soggettoId: soggetto?.id || "",
-    });
-    movimenti.push(`${logon}: ${titolo}`);
+  for (const [, elenco] of perTecnico) {
+    for (const voce of elenco) {
+      mettiSulTablet(archivio, voce);
+      movimenti.push(`${voce.logon}: ${titoloMovimento(voce)}`);
+    }
   }
   await salva(archivio);
   return { ok: true, modalita: archivio.modalita, movimenti, tabletAggiornato: true };
