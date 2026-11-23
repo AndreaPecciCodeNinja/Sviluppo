@@ -158,15 +158,66 @@ function normalizza(logon) {
   return String(logon ?? "").trim().toLowerCase();
 }
 
+const MESI = {
+  gennaio: 1, febbraio: 2, marzo: 3, aprile: 4, maggio: 5, giugno: 6,
+  luglio: 7, agosto: 8, settembre: 9, ottobre: 10, novembre: 11, dicembre: 12,
+};
+
 function tecnicoDi(archivio, logonOId) {
   const chiave = normalizza(logonOId);
-  return (archivio.tecnici ?? []).find((tecnico) => tecnico.logon === chiave || tecnico.id === logonOId);
+  if (!chiave) return undefined;
+  const compatto = chiave.replace(/[\s.]+/g, "");
+  return (archivio.tecnici ?? []).find((tecnico) => {
+    const logon = normalizza(tecnico.logon);
+    const nome = normalizza(tecnico.nome).replace(/[\s.]+/g, "");
+    return logon === chiave || tecnico.id === logonOId || nome === compatto || logon.replace(/\./g, "") === compatto;
+  });
+}
+
+function stessoOperatore(archivio, valore, logon) {
+  const tecnico = tecnicoDi(archivio, valore);
+  return tecnico ? tecnico.logon === logon : normalizza(valore) === logon;
+}
+
+function normalizzaData(valore) {
+  const testo = String(valore ?? "").trim();
+  if (!testo) return "";
+  if (/^\d{4}-\d{2}-\d{2}T/.test(testo)) return testo;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(testo)) return `${testo}T09:00:00+01:00`;
+  const slash = testo.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/);
+  if (slash) return dataIso(slash[3], slash[2], slash[1]);
+  const parola = testo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").match(/^(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?$/);
+  if (parola && MESI[parola[2]]) {
+    return dataIso(parola[3] || String(new Date().getFullYear()), MESI[parola[2]], parola[1]);
+  }
+  const data = new Date(testo);
+  if (!Number.isNaN(data.getTime())) return data.toISOString();
+  return "";
+}
+
+function dataIso(anno, mese, giorno) {
+  const mm = String(mese).padStart(2, "0");
+  const gg = String(giorno).padStart(2, "0");
+  return `${anno}-${mm}-${gg}T09:00:00+01:00`;
+}
+
+function normalizzaStatoIntervento(stato) {
+  const valore = String(stato ?? "").trim().toLowerCase().replaceAll(" ", "_").replaceAll("-", "_");
+  if (!valore || ["assegnato", "nuovo", "da_fare", "programmato"].includes(valore)) return "programmato";
+  if (valore === "in_corso" || valore === "incorso") return "in_corso";
+  if (valore === "in_attesa" || valore === "in_attesa_cliente") return "in_attesa";
+  if (STATI_INTERVENTO.has(valore)) return valore;
+  return "programmato";
+}
+
+function sembraAssegnazione(aggiornamento) {
+  return Boolean(String(aggiornamento?.titolo ?? "").trim() || String(aggiornamento?.codice ?? "").trim() || String(aggiornamento?.appuntamento ?? "").trim());
 }
 
 function pacchettoAssegnazioni(archivio, logon) {
-  const tecnico = (archivio.tecnici ?? []).find((voce) => voce.logon === logon);
-  const interventi = (archivio.interventi ?? []).filter((voce) => voce.logonTecnico === logon);
-  const ticket = (archivio.ticket ?? []).filter((voce) => voce.logonTecnico === logon).map((voce) => ticketPerTecnico(archivio, voce));
+  const tecnico = (archivio.tecnici ?? []).find((voce) => voce.logon === logon) ?? tecnicoDi(archivio, logon);
+  const interventi = (archivio.interventi ?? []).filter((voce) => stessoOperatore(archivio, voce.logonTecnico, logon));
+  const ticket = (archivio.ticket ?? []).filter((voce) => stessoOperatore(archivio, voce.logonTecnico, logon)).map((voce) => ticketPerTecnico(archivio, voce));
   const clientiId = new Set([
     ...(archivio.clienti ?? []).filter((voce) => voce.logonTecnico === logon).map((voce) => voce.id),
     ...interventi.map((voce) => voce.clienteId),
@@ -193,10 +244,26 @@ function applicaSincronizzazione(archivio, pacchetto) {
   let interventiApplicati = 0;
   let ticketApplicati = 0;
   const ricevuti = [];
+  archivio.interventi = Array.isArray(archivio.interventi) ? archivio.interventi : [];
   for (const aggiornamento of pacchetto.interventi) {
-    const record = (archivio.interventi ?? []).find((voce) => voce.id === aggiornamento.id && voce.logonTecnico === tecnico.logon);
-    if (!record) continue;
-    if (STATI_INTERVENTO.has(aggiornamento.stato)) record.stato = aggiornamento.stato;
+    const id = String(aggiornamento?.id || aggiornamento?.codice || "").trim();
+    if (!id) continue;
+    let record = archivio.interventi.find((voce) => voce.id === id || voce.codice === id);
+    if (!record) {
+      if (!sembraAssegnazione(aggiornamento)) continue;
+      record = interventoArrivato(archivio, tecnico, aggiornamento, id);
+      archivio.interventi.unshift(record);
+    } else if (!stessoOperatore(archivio, record.logonTecnico, tecnico.logon)) {
+      if (!sembraAssegnazione(aggiornamento)) continue;
+      record.logonTecnico = tecnico.logon;
+    }
+    record.stato = normalizzaStatoIntervento(aggiornamento.stato || record.stato);
+    const appuntamento = normalizzaData(aggiornamento.appuntamento);
+    if (appuntamento) record.appuntamento = appuntamento;
+    if (String(aggiornamento.titolo ?? "").trim()) record.titolo = String(aggiornamento.titolo).trim();
+    if (String(aggiornamento.codice ?? "").trim()) record.codice = String(aggiornamento.codice).trim();
+    if (String(aggiornamento.descrizione ?? "").trim()) record.descrizione = String(aggiornamento.descrizione).trim();
+    if (String(aggiornamento.indirizzo ?? "").trim()) record.indirizzo = String(aggiornamento.indirizzo).trim();
     if (aggiornamento.aggiornato) record.aggiornato = String(aggiornamento.aggiornato);
     record.note = unisciAnnotazioni(record.note, aggiornamento.note);
     interventiApplicati += 1;
@@ -346,6 +413,27 @@ function simulaTicket(archivio, tecnico) {
   archivio.ticket = Array.isArray(archivio.ticket) ? archivio.ticket : [];
   archivio.ticket.unshift(ticket);
   return ticket;
+}
+
+function interventoArrivato(archivio, tecnico, aggiornamento, id) {
+  const codice = String(aggiornamento.codice ?? "").trim();
+  const clienteId = String(aggiornamento.clienteId ?? "").trim();
+  const clienteNoto = (archivio.clienti ?? []).some((voce) => voce.id === clienteId);
+  const ora = new Date().toISOString();
+  return {
+    id,
+    codice: codice || id,
+    titolo: String(aggiornamento.titolo ?? "").trim() || codice || id,
+    descrizione: String(aggiornamento.descrizione ?? "").trim(),
+    clienteId: clienteNoto ? clienteId : clienteDellOperatore(archivio, tecnico.logon).id,
+    logonTecnico: tecnico.logon,
+    stato: normalizzaStatoIntervento(aggiornamento.stato),
+    priorita: String(aggiornamento.priorita ?? "").trim() || "media",
+    appuntamento: normalizzaData(aggiornamento.appuntamento) || dataIso(new Date().getFullYear(), new Date().getMonth() + 1, new Date().getDate()),
+    indirizzo: String(aggiornamento.indirizzo ?? "").trim(),
+    aggiornato: String(aggiornamento.aggiornato || ora),
+    note: [],
+  };
 }
 
 function ticketArrivato(archivio, tecnico, aggiornamento, id) {
@@ -569,6 +657,7 @@ async function gestisciSara(richiesta, risposta, url) {
       })),
       interventi: (archivio.interventi ?? []).map((voce) => ({
         id: voce.id,
+        codice: voce.codice || voce.id,
         titolo: voce.titolo,
         logonTecnico: voce.logonTecnico,
         clienteId: voce.clienteId || "",

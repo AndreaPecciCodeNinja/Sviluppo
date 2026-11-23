@@ -273,7 +273,7 @@ enum ImportatoreJSON {
         a archivio: ArchivioLocale,
         esito: inout EsitoImportazione
     ) -> Bool {
-        let idEsplicito = testo(dizionario, "id")
+        let idEsplicito = testo(dizionario, "id", "codice")
         let esistenteIniziale = idEsplicito.flatMap { archivio.interventoRegistrato(id: $0) }
         let logonEsplicito = testo(dizionario, "logonTecnico", "logon_tecnico", "tecnico")
         let logon: String?

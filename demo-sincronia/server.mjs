@@ -54,6 +54,11 @@ async function gestisci(richiesta, risposta) {
     const jsonRichiesto = vuoleJson(richiesta);
     return rispondi(risposta, jsonRichiesto, report);
   }
+  const assegnazioni = percorso.match(/^\/api\/tecnici\/([^/]+)\/assegnazioni$/);
+  if (richiesta.method === "GET" && assegnazioni) {
+    const logon = normalizza(decodeURIComponent(assegnazioni[1]));
+    return json(risposta, 200, await assegnazioniTecnico(logon));
+  }
   const tablet = percorso.match(/^\/api\/tablet\/([^/]+)$/);
   if (richiesta.method === "GET" && tablet) {
     const archivio = await carica();
@@ -175,6 +180,161 @@ async function riceviDallaMacchina(archivio, pacchetto) {
   };
 }
 
+function sembraIntervento(soggetto) {
+  const genere = String(soggetto?.genere || soggetto?.tipo || "").trim().toLowerCase();
+  return genere === "intervento" || Boolean(String(soggetto?.appuntamento ?? "").trim()) || Boolean(String(soggetto?.codice ?? "").trim());
+}
+
+async function registraInterventoAssegnato(archivio, soggetto, id) {
+  const logon = await logonOperatore(soggetto.logonTecnico || soggetto.tecnico || soggetto.operatore);
+  if (!logon) return { ok: false, errore: "Manca l'operatore." };
+  const appuntamento = normalizzaData(soggetto.appuntamento);
+  const stato = normalizzaStatoIntervento(soggetto.stato);
+  const titolo = String(soggetto.titolo ?? "").trim() || String(soggetto.codice ?? "").trim() || id;
+  archivio.interventi[id] = {
+    ...(archivio.interventi[id] ?? {}),
+    id,
+    codice: String(soggetto.codice ?? "").trim() || id,
+    titolo,
+    logon,
+    stato,
+    appuntamento,
+    clienteId: String(soggetto.clienteId ?? archivio.interventi[id]?.clienteId ?? "").trim(),
+    sospeso: false,
+  };
+  await salva(archivio);
+  await pianifica(archivio, {
+    tipo: "tablet",
+    immediata: true,
+    logon,
+    voce: { id, titolo, stato, segnalazioneImmediata: false, genere: "intervento" },
+    titolo,
+  });
+  const inoltro = await inoltraInterventoAllApplicazione(logon, {
+    id,
+    codice: archivio.interventi[id].codice,
+    titolo,
+    descrizione: soggetto.descrizione || "",
+    clienteId: archivio.interventi[id].clienteId,
+    stato,
+    appuntamento,
+    indirizzo: soggetto.indirizzo || "",
+  });
+  if (archivio.modalita === "automatica") await verificaSara();
+  return {
+    ok: true,
+    messaggio: inoltro
+      ? "Intervento assegnato e inoltrato all'applicazione."
+      : "Intervento registrato sulla sincronia. L'applicazione non lo ha ancora accettato.",
+    id,
+    logon,
+    appuntamento,
+  };
+}
+
+async function logonOperatore(valore) {
+  const chiave = normalizza(valore);
+  if (!chiave) return "";
+  const remoto = await leggiApplicazione();
+  const compatto = chiave.replace(/[\s.]+/g, "");
+  const tecnico = (remoto?.tecnici ?? []).find((voce) => {
+    const logon = normalizza(voce.logon);
+    const nome = normalizza(voce.nome).replace(/[\s.]+/g, "");
+    return logon === chiave || nome === compatto || logon.replace(/\./g, "") === compatto;
+  });
+  if (tecnico?.logon) return tecnico.logon;
+  return chiave.includes(".") ? chiave : chiave.replace(/\s+/g, ".");
+}
+
+async function inoltraInterventoAllApplicazione(logon, intervento) {
+  try {
+    const risposta = await fetch(`${URL_APP}/api/sincronizzazione`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        versione: 1,
+        inviato: new Date().toISOString(),
+        tecnico: { logon },
+        interventi: [intervento],
+        ticket: [],
+      }),
+      signal: AbortSignal.timeout(1500),
+    });
+    return risposta.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function assegnazioniTecnico(logon) {
+  const archivio = await carica();
+  const remoto = await leggiApplicazione();
+  const canonico = await logonOperatore(logon);
+  const perId = new Map();
+  for (const intervento of remoto?.interventi ?? []) {
+    if (normalizza(intervento.logonTecnico) !== canonico && normalizza(intervento.logonTecnico) !== logon) continue;
+    perId.set(intervento.id, {
+      id: intervento.id,
+      codice: intervento.codice || intervento.id,
+      titolo: intervento.titolo,
+      clienteId: intervento.clienteId || "",
+      logonTecnico: canonico,
+      stato: intervento.stato,
+      appuntamento: intervento.appuntamento || "",
+    });
+  }
+  for (const intervento of Object.values(archivio.interventi)) {
+    if (intervento.logon !== canonico && intervento.logon !== logon) continue;
+    const noto = perId.get(intervento.id) ?? {};
+    perId.set(intervento.id, {
+      id: intervento.id,
+      codice: intervento.codice || noto.codice || intervento.id,
+      titolo: intervento.titolo || noto.titolo || intervento.id,
+      clienteId: intervento.clienteId || noto.clienteId || "",
+      logonTecnico: canonico,
+      stato: intervento.stato || noto.stato || "programmato",
+      appuntamento: intervento.appuntamento || noto.appuntamento || "",
+    });
+  }
+  return {
+    tecnici: (remoto?.tecnici ?? []).filter((tecnico) => tecnico.logon === canonico),
+    clienti: (remoto?.clienti ?? []).filter((cliente) => [...perId.values()].some((voce) => voce.clienteId === cliente.id)),
+    interventi: [...perId.values()],
+    ticket: (remoto?.ticket ?? []).filter((voce) => normalizza(voce.logonTecnico) === canonico),
+  };
+}
+
+const MESI_DATA = {
+  gennaio: 1, febbraio: 2, marzo: 3, aprile: 4, maggio: 5, giugno: 6,
+  luglio: 7, agosto: 8, settembre: 9, ottobre: 10, novembre: 11, dicembre: 12,
+};
+
+function normalizzaData(valore) {
+  const testo = String(valore ?? "").trim();
+  if (!testo) return "";
+  if (/^\d{4}-\d{2}-\d{2}T/.test(testo)) return testo;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(testo)) return `${testo}T09:00:00+01:00`;
+  const slash = testo.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/);
+  if (slash) return `${slash[3]}-${String(slash[2]).padStart(2, "0")}-${String(slash[1]).padStart(2, "0")}T09:00:00+01:00`;
+  const parola = testo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").match(/^(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?$/);
+  if (parola && MESI_DATA[parola[2]]) {
+    const anno = parola[3] || String(new Date().getFullYear());
+    return `${anno}-${String(MESI_DATA[parola[2]]).padStart(2, "0")}-${String(parola[1]).padStart(2, "0")}T09:00:00+01:00`;
+  }
+  const data = new Date(testo);
+  if (!Number.isNaN(data.getTime())) return data.toISOString();
+  return "";
+}
+
+function normalizzaStatoIntervento(stato) {
+  const valore = String(stato ?? "").trim().toLowerCase().replaceAll(" ", "_").replaceAll("-", "_");
+  if (!valore || ["assegnato", "nuovo", "da_fare", "programmato"].includes(valore)) return "programmato";
+  if (valore === "in_corso" || valore === "incorso") return "in_corso";
+  if (valore === "in_attesa") return "in_attesa";
+  if (["completato", "annullato"].includes(valore)) return valore;
+  return "programmato";
+}
+
 function pacchettoDelTicket(pacchetto, ticket, logon) {
   return {
     versione: 1,
@@ -187,8 +347,11 @@ function pacchettoDelTicket(pacchetto, ticket, logon) {
 
 async function riceviDallApplicazione(archivio, voce) {
   const soggetto = voce?.soggetto ?? {};
-  const id = String(soggetto.id ?? "").trim();
+  const id = String(soggetto.id || soggetto.codice || "").trim();
   if (!id) return { ok: false, errore: "Manca il soggetto." };
+  if (sembraIntervento(soggetto)) {
+    return registraInterventoAssegnato(archivio, soggetto, id);
+  }
   if (voce.evento === "assegnazione" && soggetto.precedente) {
     return riassegna(archivio, {
       id,

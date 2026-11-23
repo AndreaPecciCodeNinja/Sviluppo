@@ -570,9 +570,16 @@ final class ArchivioLocale {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = .current
-        for formato in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd"] {
+        for formato in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy"] {
             formatter.dateFormat = formato
             if let data = formatter.date(from: testo) { return data }
+        }
+        let italiano = DateFormatter()
+        italiano.locale = Locale(identifier: "it_IT")
+        italiano.timeZone = .current
+        for formato in ["d MMMM yyyy", "d MMMM"] {
+            italiano.dateFormat = formato
+            if let data = italiano.date(from: testo) { return data }
         }
         return nil
     }
