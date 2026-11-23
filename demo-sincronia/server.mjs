@@ -35,6 +35,11 @@ server.listen(PORTA, HOST, () => {
 });
 
 async function gestisci(richiesta, risposta) {
+  if (richiesta.method === "OPTIONS") {
+    risposta.writeHead(204, intestazioniCors({ "Cache-Control": "no-store" }));
+    risposta.end();
+    return;
+  }
   const url = new URL(richiesta.url ?? "/", `http://${HOST}:${PORTA}`);
   const percorso = url.pathname;
   if (richiesta.method === "GET" && percorso === "/") {
@@ -75,7 +80,7 @@ async function gestisci(richiesta, risposta) {
     const esito = await riceviDallaMacchina(archivio, campi);
     return json(risposta, esito.ok ? 200 : 400, esito);
   }
-  if (percorso === "/api/ingresso") {
+  if (percorso === "/api/ingresso" || percorso === "/api/ticket" || percorso === "/api/ticket/invia") {
     const esito = await riceviDallApplicazione(archivio, campi);
     return json(risposta, esito.ok ? 200 : 400, esito);
   }
@@ -180,9 +185,32 @@ async function riceviDallaMacchina(archivio, pacchetto) {
   };
 }
 
+function soggettoIngresso(voce) {
+  if (voce?.soggetto && typeof voce.soggetto === "object") return voce.soggetto;
+  if (voce?.ticket && typeof voce.ticket === "object") return voce.ticket;
+  return voce ?? {};
+}
+
+function statoNormalizzato(soggetto) {
+  return String(soggetto?.stato ?? "").trim().toLowerCase().replace(/\s+/g, "_").replace(/-/g, "_");
+}
+
 function sembraIntervento(soggetto) {
   const genere = String(soggetto?.genere || soggetto?.tipo || "").trim().toLowerCase();
-  return genere === "intervento" || Boolean(String(soggetto?.appuntamento ?? "").trim()) || Boolean(String(soggetto?.codice ?? "").trim());
+  const stato = statoNormalizzato(soggetto);
+  const statiTicket = new Set(["aperto", "in_lavorazione", "in_attesa_cliente", "risolto", "chiuso", "da_inviare"]);
+  if (genere === "ticket" || statiTicket.has(stato)) return false;
+  if (genere === "intervento") return true;
+  return Boolean(String(soggetto?.appuntamento ?? "").trim());
+}
+
+function eDaInviare(soggetto) {
+  if (statoNormalizzato(soggetto) === "da_inviare") return true;
+  return Boolean(String(soggetto?.codice ?? "").trim()) && !sembraIntervento(soggetto);
+}
+
+function nomeClientePulito(nome) {
+  return String(nome ?? "").replace(/\s*\(demo\)\s*/gi, " ").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 async function registraInterventoAssegnato(archivio, soggetto, id) {
@@ -345,12 +373,91 @@ function pacchettoDelTicket(pacchetto, ticket, logon) {
   };
 }
 
+async function registraTicketInviato(archivio, soggetto, id) {
+  const nomeCliente = soggetto.cliente || soggetto.clienteNome || soggetto.nomeCliente || "";
+  let logon = await logonOperatore(soggetto.logonTecnico || soggetto.tecnico || soggetto.operatore || "");
+  if (!logon) logon = await logonDalCliente(nomeCliente);
+  if (!logon) return { ok: false, errore: "Manca l'operatore." };
+  const codice = String(soggetto.codice ?? "").trim() || id;
+  const titolo = String(soggetto.titolo ?? "").trim() || codice;
+  const clienteId = await clienteIdDalNome(nomeCliente);
+  const pacchetto = {
+    versione: 1,
+    inviato: new Date().toISOString(),
+    tecnico: { logon },
+    interventi: [],
+    ticket: [{
+      id,
+      codice,
+      titolo,
+      descrizione: String(soggetto.descrizione ?? "").trim(),
+      clienteId,
+      cliente: nomeCliente,
+      stato: "aperto",
+      daInviare: true,
+      verso: "tablet",
+    }],
+  };
+  archivio.ticket[id] = {
+    ...(archivio.ticket[id] ?? {}),
+    id,
+    codice,
+    titolo,
+    logon,
+    clienteId,
+    cliente: nomeCliente,
+    stato: "aperto",
+    origine: soggetto.origine || "assistenza-tecnica",
+    segnalazioneIpad: false,
+    inoltrato: false,
+    sulTablet: logon,
+    daInviare: true,
+    pacchetto,
+  };
+  await salva(archivio);
+  await pianifica(archivio, {
+    tipo: "tablet",
+    immediata: true,
+    logon,
+    voce: { id, titolo, codice, stato: "aperto", segnalazioneImmediata: false, genere: "ticket" },
+    titolo,
+  });
+  await pianifica(archivio, { tipo: "applicazione", immediata: false, pacchetto, titolo });
+  if (archivio.modalita === "automatica") await verificaSara();
+  return { ok: true, inviato: true, stato: "inviato", id, codice, logon, titolo };
+}
+
+async function logonDalCliente(nome) {
+  const pulito = nomeClientePulito(nome);
+  if (!pulito) return "";
+  const remoto = await leggiApplicazione();
+  const cliente = (remoto?.clienti ?? []).find((voce) => {
+    const suo = nomeClientePulito(voce.nome);
+    return suo === pulito || pulito.startsWith(suo) || suo.startsWith(pulito);
+  });
+  return cliente?.logonTecnico || "";
+}
+
+async function clienteIdDalNome(nome) {
+  const pulito = nomeClientePulito(nome);
+  if (!pulito) return "";
+  const remoto = await leggiApplicazione();
+  const cliente = (remoto?.clienti ?? []).find((voce) => {
+    const suo = nomeClientePulito(voce.nome);
+    return suo === pulito || pulito.startsWith(suo) || suo.startsWith(pulito);
+  });
+  return cliente?.id || "";
+}
+
 async function riceviDallApplicazione(archivio, voce) {
-  const soggetto = voce?.soggetto ?? {};
+  const soggetto = soggettoIngresso(voce);
   const id = String(soggetto.id || soggetto.codice || "").trim();
   if (!id) return { ok: false, errore: "Manca il soggetto." };
   if (sembraIntervento(soggetto)) {
     return registraInterventoAssegnato(archivio, soggetto, id);
+  }
+  if (eDaInviare(soggetto)) {
+    return registraTicketInviato(archivio, soggetto, id);
   }
   if (voce.evento === "assegnazione" && soggetto.precedente) {
     return riassegna(archivio, {
@@ -644,7 +751,7 @@ async function verificaSara() {
     });
     coda.ticket = coda.ticket.filter((voce) => {
       const master = archivio.ticket[voce.id];
-      const tiene = master && master.segnalazioneIpad && master.sulTablet === logon && master.logon === logon;
+      const tiene = master && master.logon === logon && master.sulTablet === logon;
       if (!tiene) ritrasferiti.push({ id: voce.id, azione: "tolto dal tablet", logon });
       return tiene;
     });
@@ -892,13 +999,22 @@ function rispondi(risposta, jsonRichiesto, corpo, codice = 200) {
   json(risposta, codice, corpo);
 }
 
+function intestazioniCors(extra) {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    ...extra,
+  };
+}
+
 function json(risposta, codice, corpo) {
   const dati = Buffer.from(JSON.stringify(corpo));
-  risposta.writeHead(codice, {
+  risposta.writeHead(codice, intestazioniCors({
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": dati.length,
     "Cache-Control": "no-store",
-  });
+  }));
   risposta.end(dati);
 }
 
@@ -936,8 +1052,15 @@ function pagina(archivio) {
     header { background: #243044; color: white; padding: 28px 32px; }
     header p { margin: 8px 0 0; max-width: 48rem; }
     main { padding: 28px 32px 64px; display: grid; gap: 24px; }
-    section { background: white; border-radius: 16px; padding: 20px 22px; }
+    section, details.pannello { background: white; border-radius: 16px; padding: 20px 22px; }
     h2 { margin: 0 0 12px; font-size: 1.2rem; }
+    details.pannello > summary { cursor: pointer; list-style: none; }
+    details.pannello > summary::-webkit-details-marker { display: none; }
+    details.pannello > summary h2 { display: inline; margin: 0; }
+    details.pannello > summary h2::before { content: "▸ "; }
+    details.pannello[open] > summary h2::before { content: "▾ "; }
+    details.pannello > summary .suggerimento { margin-left: 8px; }
+    details.pannello[open] > summary .suggerimento { display: none; }
     .meta { color: #5c6770; }
     .ok { color: #1f7a4d; font-weight: 700; }
     button { font: inherit; background: #243044; color: white; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
@@ -970,12 +1093,15 @@ function pagina(archivio) {
       </form>
       ${attese || "<p class=\"meta\">Nessun trasferimento in attesa.</p>"}
     </section>
-    <section>
-      <h2>Tablet <span class="nuovo">Nuovo</span></h2>
+    <details class="pannello">
+      <summary>
+        <h2>Tablet <span class="nuovo">Nuovo</span></h2>
+        <span class="suggerimento meta">Chiusa. Clicca per aprire.</span>
+      </summary>
       <p class="meta">Quello che la sincronia ha messo sul tablet di ciascun tecnico. Un cambio tecnico toglie l'intervento dal primo e lo mette sul secondo.</p>
       ${tablet ? `<ul>${tablet}</ul>` : "<p class=\"meta\">Nessun tablet ha ancora un intervento.</p>"}
       ${dimentica}
-    </section>
+    </details>
     <section>
       <h2>Pending <span class="nuovo">Nuovo</span></h2>
       <p class="meta">La causale distingue il problema tecnico dal motivo extra tecnico. Sara riporta il pending sull'applicazione.</p>

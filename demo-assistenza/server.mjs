@@ -270,9 +270,9 @@ function applicaSincronizzazione(archivio, pacchetto) {
   }
   archivio.ticket = Array.isArray(archivio.ticket) ? archivio.ticket : [];
   for (const aggiornamento of pacchetto.ticket) {
-    const id = String(aggiornamento?.id ?? "").trim();
+    const id = String(aggiornamento?.id || aggiornamento?.codice || "").trim();
     if (!id) continue;
-    let record = archivio.ticket.find((voce) => voce.id === id && voce.logonTecnico === tecnico.logon);
+    let record = archivio.ticket.find((voce) => (voce.id === id || voce.codice === id) && stessoOperatore(archivio, voce.logonTecnico, tecnico.logon));
     if (!record) {
       record = ticketArrivato(archivio, tecnico, aggiornamento, id);
       archivio.ticket.unshift(record);
@@ -436,16 +436,32 @@ function interventoArrivato(archivio, tecnico, aggiornamento, id) {
   };
 }
 
+function nomeClientePulito(nome) {
+  return String(nome ?? "").replace(/\s*\(demo\)\s*/gi, " ").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function clientePerNome(archivio, nome) {
+  const pulito = nomeClientePulito(nome);
+  if (!pulito) return null;
+  return (archivio.clienti ?? []).find((voce) => {
+    const suo = nomeClientePulito(voce.nome);
+    return suo === pulito || pulito.startsWith(suo) || suo.startsWith(pulito);
+  }) || null;
+}
+
 function ticketArrivato(archivio, tecnico, aggiornamento, id) {
   const clienteId = String(aggiornamento.clienteId ?? "").trim();
+  const perNome = clientePerNome(archivio, aggiornamento.cliente || aggiornamento.clienteNome);
   const clienteNoto = (archivio.clienti ?? []).some((voce) => voce.id === clienteId);
-  const cliente = clienteNoto ? clienteId : clienteDellOperatore(archivio, tecnico.logon).id;
+  const cliente = clienteNoto ? clienteId : (perNome?.id || clienteDellOperatore(archivio, tecnico.logon).id);
   const ora = String(aggiornamento.aggiornato || new Date().toISOString());
-  const titolo = String(aggiornamento.titolo ?? "").trim() || "Ticket dall'app";
+  const titolo = String(aggiornamento.titolo ?? "").trim() || String(aggiornamento.codice ?? "").trim() || "Ticket dall'app";
+  const daInviare = aggiornamento.daInviare === true || aggiornamento.verso === "tablet";
   const record = {
     id,
+    codice: String(aggiornamento.codice ?? "").trim() || undefined,
     titolo,
-    descrizione: String(aggiornamento.descrizione ?? "").trim() || "Arrivato dall'app mobile.",
+    descrizione: String(aggiornamento.descrizione ?? "").trim() || (daInviare ? "" : "Arrivato dall'app mobile."),
     clienteId: cliente,
     logonTecnico: tecnico.logon,
     stato: STATI_TICKET.has(aggiornamento.stato) ? aggiornamento.stato : "aperto",
@@ -453,9 +469,9 @@ function ticketArrivato(archivio, tecnico, aggiornamento, id) {
     aperto: ora,
     aggiornato: ora,
     risposte: [],
-    daInviare: false,
-    ricevutoIl: ora,
+    daInviare,
   };
+  if (!daInviare) record.ricevutoIl = ora;
   record.risposte = unisciAnnotazioni([], aggiornamento.risposte);
   return record;
 }
@@ -492,6 +508,7 @@ function segnaInviati(archivio, logon) {
 function ticketPerApp(ticket) {
   const pubblico = {
     id: ticket.id,
+    codice: ticket.codice || undefined,
     titolo: ticket.titolo,
     descrizione: ticket.descrizione ?? "",
     clienteId: ticket.clienteId,
@@ -666,7 +683,7 @@ async function gestisciSara(richiesta, risposta, url) {
       })),
       pending: archivio.pending ?? [],
       tecnici: (archivio.tecnici ?? []).map((tecnico) => ({ logon: tecnico.logon, nome: tecnico.nome })),
-      clienti: (archivio.clienti ?? []).map((cliente) => ({ id: cliente.id, nome: cliente.nome })),
+      clienti: (archivio.clienti ?? []).map((cliente) => ({ id: cliente.id, nome: cliente.nome, logonTecnico: cliente.logonTecnico || "" })),
     }), true;
   }
   if (richiesta.method !== "POST") return false;
