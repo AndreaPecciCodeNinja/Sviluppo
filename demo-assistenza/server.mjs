@@ -557,6 +557,7 @@ async function gestisciSara(richiesta, risposta, url) {
         id: ticket.id,
         titolo: ticket.titolo,
         logonTecnico: ticket.logonTecnico,
+        clienteId: ticket.clienteId || "",
         stato: ticket.stato,
         origine: ticket.origine ?? null,
         tipologia: ticket.tipologia ?? null,
@@ -570,11 +571,13 @@ async function gestisciSara(richiesta, risposta, url) {
         id: voce.id,
         titolo: voce.titolo,
         logonTecnico: voce.logonTecnico,
+        clienteId: voce.clienteId || "",
         stato: voce.stato,
         appuntamento: voce.appuntamento ?? null,
       })),
       pending: archivio.pending ?? [],
       tecnici: (archivio.tecnici ?? []).map((tecnico) => ({ logon: tecnico.logon, nome: tecnico.nome })),
+      clienti: (archivio.clienti ?? []).map((cliente) => ({ id: cliente.id, nome: cliente.nome })),
     }), true;
   }
   if (richiesta.method !== "POST") return false;

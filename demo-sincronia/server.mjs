@@ -41,6 +41,11 @@ async function gestisci(richiesta, risposta) {
     const archivio = await carica();
     return html(risposta, pagina(archivio));
   }
+  if (richiesta.method === "GET" && percorso === "/log") {
+    const archivio = await carica();
+    const remoto = await leggiApplicazione();
+    return html(risposta, paginaLog(archivio, remoto, url.searchParams));
+  }
   if (richiesta.method === "GET" && percorso === "/api/sara/report") {
     return json(risposta, 200, await verificaSara());
   }
@@ -376,7 +381,16 @@ async function esegui(archivio, voce) {
     const salvato = archivio.pending.find((pending) => pending.id === voce.pending.id);
     if (salvato) salvato.inoltrato = true;
   }
-  archivio.trasferimenti.unshift({ id: voce.id, tipo: voce.tipo, titolo: voce.titolo, quando: new Date().toISOString() });
+  const soggettoId = idSoggetto(voce);
+  archivio.trasferimenti.unshift({
+    id: voce.id,
+    tipo: voce.tipo,
+    titolo: voce.titolo,
+    quando: new Date().toISOString(),
+    tecnico: logonSoggetto(archivio, voce, soggettoId),
+    clienteId: clienteSoggetto(archivio, voce, soggettoId),
+    soggettoId,
+  });
   archivio.trasferimenti = archivio.trasferimenti.slice(0, 30);
   await salva(archivio);
 }
@@ -767,12 +781,21 @@ function pagina(archivio) {
     form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0; }
     input, select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #d5cec3; }
     .nuovo { display: inline-block; margin-left: 8px; background: #b45309; color: white; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; vertical-align: middle; }
+    a { color: #1d4e89; }
+    header a { color: #f4f1ea; }
+    nav { margin-top: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e6e0d6; vertical-align: top; }
+    th { font-size: 0.85rem; color: #5c6770; font-weight: 650; }
+    label { display: grid; gap: 4px; font-size: 0.92rem; }
+    .filtri { align-items: end; }
   </style>
 </head>
 <body>
   <header>
     <h1>Sincronia <span class="nuovo">Nuovo</span></h1>
     <p>Riceve i ticket dalla macchina, li inoltra sempre all'applicazione e, se la tipologia è critica, li segnala sul tablet. Sara confronta gli stati e il suo fa fede.</p>
+    <nav><a href="/log">Log</a></nav>
   </header>
   <main>
     <section>
@@ -817,6 +840,226 @@ function pagina(archivio) {
       ${operatori ? `<ul>${operatori}</ul>` : ""}
       ${(report?.ritrasferiti ?? []).length ? `<p class="meta">Ritrasferiti da Sara: ${escape(report.ritrasferiti.map((voce) => voce.id).join(", "))}</p>` : ""}
       <form method="post" action="/api/sara/verifica"><button type="submit">Verifica di Sara</button></form>
+    </section>
+    <section>
+      <h2>Log <span class="nuovo">Nuovo</span></h2>
+      <p class="meta">I movimenti sono in una tabella, con i filtri Data, Cliente e Tecnico.</p>
+      <p><a href="/log">Apri il log</a></p>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
+const TIPI_LOG = {
+  applicazione: "Applicazione",
+  tablet: "Tablet",
+  chiusura: "Chiusura",
+  pending: "Pending",
+  riassegnazione: "Riassegnazione",
+};
+
+function idSoggetto(voce) {
+  if (voce.tipo === "tablet") return voce.voce?.id || "";
+  if (voce.tipo === "chiusura") return voce.pacchetto?.ticket?.[0]?.id || voce.pacchetto?.interventi?.[0]?.id || voce.titolo || "";
+  if (voce.tipo === "riassegnazione") return voce.movimento?.id || "";
+  if (voce.tipo === "pending") return voce.pending?.riferimento || "";
+  if (voce.tipo === "applicazione") return voce.pacchetto?.ticket?.[0]?.id || voce.pacchetto?.interventi?.[0]?.id || "";
+  return "";
+}
+
+function logonSoggetto(archivio, voce, id) {
+  if (voce.tipo === "riassegnazione") return normalizza(voce.movimento?.a);
+  if (voce.logon) return normalizza(voce.logon);
+  if (voce.pacchetto?.tecnico?.logon) return normalizza(voce.pacchetto.tecnico.logon);
+  return normalizza(archivio.ticket[id]?.logon || archivio.interventi[id]?.logon);
+}
+
+function clienteSoggetto(archivio, voce, id) {
+  const dalPacchetto = voce.pacchetto?.ticket?.[0]?.clienteId || voce.pacchetto?.interventi?.[0]?.clienteId || "";
+  if (dalPacchetto) return String(dalPacchetto);
+  return String(archivio.ticket[id]?.pacchetto?.ticket?.[0]?.clienteId || "");
+}
+
+function piuVicino(elenco, quando, accettato) {
+  const istante = Date.parse(quando || "");
+  let migliore = null;
+  let distanza = 8000;
+  for (const candidato of elenco ?? []) {
+    if (accettato && !accettato(candidato)) continue;
+    const altro = Date.parse(candidato.quando || "");
+    if (Number.isNaN(istante) || Number.isNaN(altro)) continue;
+    const delta = Math.abs(istante - altro);
+    if (delta <= distanza) {
+      distanza = delta;
+      migliore = candidato;
+    }
+  }
+  return migliore;
+}
+
+function indovinaSoggetto(archivio, voce) {
+  if (voce.soggettoId) return voce.soggettoId;
+  if (voce.tipo === "chiusura" && (archivio.ticket[voce.titolo] || archivio.interventi[voce.titolo])) return voce.titolo;
+  if (voce.tipo === "pending") {
+    const pending = piuVicino(archivio.pending, voce.quando, (candidato) => candidato.tipologia === voce.titolo);
+    if (pending?.riferimento) return pending.riferimento;
+  }
+  if (voce.tipo === "riassegnazione") {
+    const movimento = piuVicino(archivio.riassegnazioni, voce.quando, (candidato) => {
+      const intervento = archivio.interventi[candidato.interventoId];
+      return !voce.titolo || intervento?.titolo === voce.titolo;
+    });
+    if (movimento?.interventoId) return movimento.interventoId;
+  }
+  const ticket = Object.values(archivio.ticket).find((candidato) => candidato.titolo === voce.titolo);
+  if (ticket) return ticket.id;
+  const intervento = Object.values(archivio.interventi).find((candidato) => candidato.titolo === voce.titolo);
+  return intervento?.id || "";
+}
+
+function giornoDi(iso) {
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }).format(data);
+}
+
+function oraDi(iso) {
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return String(iso ?? "");
+  return new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", dateStyle: "short", timeStyle: "medium" }).format(data);
+}
+
+function righeLog(archivio, remoto) {
+  const nomiTecnici = new Map((remoto?.tecnici ?? []).map((tecnico) => [tecnico.logon, tecnico.nome]));
+  const nomiClienti = new Map((remoto?.clienti ?? []).map((cliente) => [cliente.id, cliente.nome]));
+  const soggetti = new Map([
+    ...(remoto?.ticket ?? []).map((voce) => [voce.id, voce]),
+    ...(remoto?.interventi ?? []).map((voce) => [voce.id, voce]),
+  ]);
+  return (archivio.trasferimenti ?? []).map((voce) => {
+    const soggettoId = indovinaSoggetto(archivio, voce);
+    const locale = archivio.ticket[soggettoId] || archivio.interventi[soggettoId];
+    const remotoSoggetto = soggetti.get(soggettoId);
+    let tecnico = voce.tecnico || "";
+    if (!tecnico && voce.tipo === "riassegnazione") {
+      const movimento = piuVicino(archivio.riassegnazioni, voce.quando, (candidato) => candidato.interventoId === soggettoId);
+      tecnico = movimento?.a || "";
+    }
+    if (!tecnico) tecnico = locale?.logon || remotoSoggetto?.logonTecnico || "";
+    tecnico = normalizza(tecnico);
+    const clienteId = voce.clienteId || remotoSoggetto?.clienteId || locale?.pacchetto?.ticket?.[0]?.clienteId || "";
+    return {
+      ...voce,
+      soggettoId,
+      tecnico,
+      nomeTecnico: nomiTecnici.get(tecnico) || tecnico,
+      clienteId: String(clienteId || ""),
+      nomeCliente: nomiClienti.get(clienteId) || "",
+      giorno: giornoDi(voce.quando),
+    };
+  });
+}
+
+function opzione(valore, etichetta, scelto) {
+  const selected = valore === scelto ? " selected" : "";
+  return `<option value="${escape(valore)}"${selected}>${escape(etichetta)}</option>`;
+}
+
+function paginaLog(archivio, remoto, parametri) {
+  const righe = righeLog(archivio, remoto);
+  const data = String(parametri.get("data") ?? "");
+  const cliente = String(parametri.get("cliente") ?? "");
+  const tecnico = String(parametri.get("tecnico") ?? "");
+  const filtrate = righe.filter((riga) => {
+    if (data && riga.giorno !== data) return false;
+    if (cliente && riga.clienteId !== cliente) return false;
+    if (tecnico && riga.tecnico !== tecnico) return false;
+    return true;
+  });
+  const clienti = new Map((remoto?.clienti ?? []).map((voce) => [voce.id, voce.nome]));
+  for (const riga of righe) {
+    if (riga.clienteId && !clienti.has(riga.clienteId)) clienti.set(riga.clienteId, riga.nomeCliente || riga.clienteId);
+  }
+  const tecnici = new Map((remoto?.tecnici ?? []).map((voce) => [voce.logon, voce.nome]));
+  for (const riga of righe) {
+    if (riga.tecnico && !tecnici.has(riga.tecnico)) tecnici.set(riga.tecnico, riga.nomeTecnico || riga.tecnico);
+  }
+  const opzioniClienti = [...clienti.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], "it"))
+    .map(([id, nome]) => opzione(id, nome, cliente))
+    .join("");
+  const opzioniTecnici = [...tecnici.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], "it"))
+    .map(([logon, nome]) => opzione(logon, nome, tecnico))
+    .join("");
+  const corpo = filtrate.map((riga) => `<tr>
+      <td>${escape(oraDi(riga.quando))}</td>
+      <td>${escape(TIPI_LOG[riga.tipo] || riga.tipo || "")}</td>
+      <td>${escape(riga.titolo || "")}</td>
+      <td>${escape(riga.nomeCliente || "—")}</td>
+      <td>${escape(riga.nomeTecnico || "—")}</td>
+    </tr>`).join("");
+  const vuoto = righe.length
+    ? "Nessun movimento con questi filtri."
+    : "Nessun movimento nel log.";
+  return `<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log della sincronia</title>
+  <style>
+    body { margin: 0; font-family: "Segoe UI", sans-serif; background: #f4f1ea; color: #1c2430; }
+    header { background: #243044; color: white; padding: 28px 32px; }
+    header p { margin: 8px 0 0; max-width: 48rem; }
+    main { padding: 28px 32px 64px; display: grid; gap: 24px; }
+    section { background: white; border-radius: 16px; padding: 20px 22px; }
+    h2 { margin: 0 0 12px; font-size: 1.2rem; }
+    .meta { color: #5c6770; }
+    button { font: inherit; background: #243044; color: white; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
+    form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0; }
+    input, select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #d5cec3; background: white; }
+    .nuovo { display: inline-block; margin-left: 8px; background: #b45309; color: white; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; vertical-align: middle; }
+    a { color: #1d4e89; }
+    header a { color: #f4f1ea; }
+    nav { margin-top: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e6e0d6; vertical-align: top; }
+    th { font-size: 0.85rem; color: #5c6770; }
+    label { display: grid; gap: 4px; font-size: 0.92rem; }
+    .filtri { align-items: end; }
+    .secondario { background: transparent; color: #243044; border: 1px solid #d5cec3; text-decoration: none; padding: 10px 16px; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Log <span class="nuovo">Nuovo</span></h1>
+    <p>I movimenti della sincronia, una riga per ciascuno. I filtri Data, Cliente e Tecnico si sommano.</p>
+    <nav><a href="/">Torna alla sincronia</a></nav>
+  </header>
+  <main>
+    <section>
+      <h2>Filtri</h2>
+      <form class="filtri" method="get" action="/log">
+        <label>Data <input type="date" name="data" value="${escape(data)}"></label>
+        <label>Cliente <select name="cliente"><option value="">Tutti</option>${opzioniClienti}</select></label>
+        <label>Tecnico <select name="tecnico"><option value="">Tutti</option>${opzioniTecnici}</select></label>
+        <button type="submit">Filtra</button>
+        <a class="secondario" href="/log">Azzera</a>
+      </form>
+      <p class="meta">${filtrate.length} di ${righe.length}. La data è il giorno a Roma. Cliente e tecnico vuoti significano tutti.</p>
+    </section>
+    <section>
+      <h2>Movimenti</h2>
+      <table>
+        <thead>
+          <tr><th>Data</th><th>Tipo</th><th>Titolo</th><th>Cliente</th><th>Tecnico</th></tr>
+        </thead>
+        <tbody>
+          ${corpo || `<tr><td colspan="5">${vuoto}</td></tr>`}
+        </tbody>
+      </table>
     </section>
   </main>
 </body>
