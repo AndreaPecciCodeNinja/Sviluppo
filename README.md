@@ -78,6 +78,16 @@ Dalla cartella del repository. Su macOS è `~/Documents/Sviluppo`.
 
 Il primo avvia in background l'assistenza sulla porta 3012, la sincronia sulla 3013 e la macchina sulla 3014. Il secondo le ferma. Serve `node` nel PATH. I log restano in `.demo/`.
 
+## Pannello demo
+
+Pagina a parte, porta **3011**.
+
+```bash
+node pannello-demo/server.mjs
+```
+
+Apri http://127.0.0.1:3011/. **Avvia le demo** e **Spegni le demo** accendono e fermano assistenza (3012), sincronia (3013) e macchina (3014). Accanto ai pulsanti, lo stato di ciascuna è «accesa» o «spenta» e si aggiorna da solo.
+
 ## Demo Assistenza Tecnica
 
 Il server è in `demo-assistenza/`. I dati restano nel file locale `demo-assistenza/dati/archivio.json`, creato al primo avvio dal seed. Non serve installare pacchetti.
