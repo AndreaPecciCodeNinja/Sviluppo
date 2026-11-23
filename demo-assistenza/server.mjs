@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const PORTA = 3021;
 const HOST = "127.0.0.1";
 const URL_SINCRO = process.env.SINCRO_INGRESSO || "http://127.0.0.1:3022/api/ingresso";
+const URL_SINCRO_COMANDO = process.env.SINCRO_COMANDO || "http://127.0.0.1:3022/api/sincronizza";
 const URL_SARA = process.env.SARA_URL || "http://127.0.0.1:3022/api/sara/dialogo";
 const RADICE = dirname(fileURLToPath(import.meta.url));
 const PERCORSO_SEED = join(RADICE, "seed.json");
@@ -125,6 +126,7 @@ const server = createServer(async (richiesta, risposta) => {
       const esito = applicaSincronizzazione(archivio, pacchetto);
       if (esito.errore) return json(risposta, esito.codice, { errore: esito.errore });
       await salva(archivio);
+      await avvisaSincronia();
       return json(risposta, 200, {
         messaggio: "Aggiornamenti registrati.",
         interventi: esito.interventi,
@@ -508,6 +510,19 @@ function ticketArrivato(archivio, tecnico, aggiornamento, id) {
   return record;
 }
 
+async function avvisaSincronia() {
+  try {
+    await fetch(URL_SINCRO_COMANDO, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ origine: "applicazione" }),
+      signal: AbortSignal.timeout(1500),
+    });
+  } catch {
+    // La sincronia registra il movimento quando è raggiungibile.
+  }
+}
+
 function registraAvviso(archivio, campi) {
   archivio.avvisiAssegnazione = Array.isArray(archivio.avvisiAssegnazione) ? archivio.avvisiAssegnazione : [];
   const id = String(campi?.id ?? "").trim();
@@ -714,6 +729,7 @@ async function gestisciSara(richiesta, risposta, url) {
     return json(risposta, 200, {
       ticket: (archivio.ticket ?? []).map((ticket) => ({
         id: ticket.id,
+        codice: ticket.codice || "",
         titolo: ticket.titolo,
         logonTecnico: ticket.logonTecnico,
         clienteId: ticket.clienteId || "",
@@ -728,7 +744,7 @@ async function gestisciSara(richiesta, risposta, url) {
       })),
       interventi: (archivio.interventi ?? []).map((voce) => ({
         id: voce.id,
-        codice: voce.codice || voce.id,
+        codice: voce.codice || "",
         titolo: voce.titolo,
         logonTecnico: voce.logonTecnico,
         clienteId: voce.clienteId || "",

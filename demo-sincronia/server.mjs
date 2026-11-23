@@ -97,10 +97,10 @@ async function gestisci(richiesta, risposta) {
     await salva(archivio);
     return json(risposta, 200, { risposta: "Sara ha ricevuto il messaggio. Il suo stato fa fede." });
   }
-  if (percorso === "/api/modalita") {
-    archivio.modalita = campi.modalita === "manuale" ? "manuale" : "automatica";
-    await salva(archivio);
-    return rispondi(risposta, jsonRichiesto, { modalita: archivio.modalita });
+  if (percorso === "/api/modalita" || percorso === "/api/sincronizza") {
+    if (percorso === "/api/modalita") archivio.modalita = campi.modalita === "manuale" ? "manuale" : "automatica";
+    const esito = await sincronizza(archivio);
+    return rispondi(risposta, jsonRichiesto, esito, esito.ok ? 200 : 400);
   }
   if (percorso === "/api/conferma") {
     const esito = await conferma(archivio, campi.id);
@@ -715,6 +715,151 @@ async function chiudiDalTablet(archivio, logon, campi) {
   return { ok: true, messaggio: "Chiusura del tablet ricevuta." };
 }
 
+const CHIUSI_TICKET = new Set(["risolto", "chiuso"]);
+const CHIUSI_INTERVENTO = new Set(["completato", "annullato"]);
+
+function normalizzaVoceAssegnata(genere, voce) {
+  const logon = normalizza(voce?.logonTecnico || voce?.logon);
+  const id = String(voce?.id || voce?.codice || "").trim();
+  if (!logon || !id) return null;
+  const stato = String(voce?.stato || "").trim().toLowerCase().replaceAll(" ", "_").replaceAll("-", "_");
+  if (genere === "ticket" && CHIUSI_TICKET.has(stato)) return null;
+  if (genere === "intervento" && CHIUSI_INTERVENTO.has(stato)) return null;
+  return {
+    genere,
+    id,
+    codice: String(voce?.codice || "").trim(),
+    titolo: String(voce?.titolo || voce?.codice || id).trim(),
+    stato: stato || (genere === "ticket" ? "aperto" : "programmato"),
+    clienteId: String(voce?.clienteId || "").trim(),
+    logon,
+  };
+}
+
+function raccogliAssegnati(archivio, remoto) {
+  const perId = new Map();
+  const aggiungi = (genere, voce) => {
+    const normale = normalizzaVoceAssegnata(genere, voce);
+    if (!normale) return;
+    perId.set(`${genere}:${normale.id}`, normale);
+  };
+  for (const voce of remoto?.ticket ?? []) aggiungi("ticket", voce);
+  for (const voce of remoto?.interventi ?? []) aggiungi("intervento", voce);
+  for (const voce of Object.values(archivio.ticket ?? {})) aggiungi("ticket", voce);
+  for (const voce of Object.values(archivio.interventi ?? {})) aggiungi("intervento", voce);
+  return [...perId.values()];
+}
+
+function conto(numero, uno, molti) {
+  return `${numero} ${numero === 1 ? uno : molti}`;
+}
+
+function titoloSincronizzazione(modalita, elenco) {
+  const interventi = elenco.filter((voce) => voce.genere === "intervento").length;
+  const ticket = elenco.filter((voce) => voce.genere === "ticket").length;
+  const codici = [...new Set(elenco.map((voce) => voce.codice).filter(Boolean))];
+  const codiciTesto = codici.length ? ` · ${codici.join(", ")}` : "";
+  return `Sincronizzazione ${modalita} · ${conto(interventi, "intervento", "interventi")}, ${conto(ticket, "ticket", "ticket")}${codiciTesto}`;
+}
+
+function applicaSulTablet(archivio, logon, elenco) {
+  const coda = assicuratiCoda(archivio, logon);
+  for (const voce of elenco) {
+    for (const [altro, altraCoda] of Object.entries(archivio.tablet)) {
+      if (altro === logon) continue;
+      altraCoda.ticket = (altraCoda.ticket ?? []).filter((candidato) => candidato.id !== voce.id);
+      altraCoda.interventi = (altraCoda.interventi ?? []).filter((candidato) => candidato.id !== voce.id);
+    }
+    const destinazione = voce.genere === "intervento" ? coda.interventi : coda.ticket;
+    if (!destinazione.some((candidato) => candidato.id === voce.id)) {
+      destinazione.unshift({
+        id: voce.id,
+        codice: voce.codice,
+        titolo: voce.titolo,
+        stato: voce.stato,
+        segnalazioneImmediata: false,
+        genere: voce.genere,
+        quando: new Date().toISOString(),
+      });
+    }
+    if (voce.genere === "ticket") {
+      archivio.ticket[voce.id] = {
+        ...(archivio.ticket[voce.id] ?? {}),
+        id: voce.id,
+        codice: voce.codice || archivio.ticket[voce.id]?.codice,
+        titolo: voce.titolo,
+        logon,
+        clienteId: voce.clienteId || archivio.ticket[voce.id]?.clienteId || "",
+        stato: voce.stato,
+        sulTablet: logon,
+        inoltrato: true,
+      };
+    } else {
+      archivio.interventi[voce.id] = {
+        ...(archivio.interventi[voce.id] ?? {}),
+        id: voce.id,
+        codice: voce.codice || archivio.interventi[voce.id]?.codice,
+        titolo: voce.titolo,
+        logon,
+        clienteId: voce.clienteId || archivio.interventi[voce.id]?.clienteId || "",
+        stato: voce.stato,
+        sospeso: false,
+      };
+    }
+  }
+}
+
+function memorizzaMovimento(archivio, voce) {
+  const soggettoId = voce.soggettoId || idSoggetto(voce);
+  archivio.trasferimenti.unshift({
+    id: voce.id || randomUUID(),
+    tipo: voce.tipo,
+    titolo: voce.titolo,
+    quando: new Date().toISOString(),
+    tecnico: normalizza(voce.logon) || logonSoggetto(archivio, voce, soggettoId),
+    clienteId: voce.clienteId || clienteSoggetto(archivio, voce, soggettoId),
+    soggettoId,
+  });
+  archivio.trasferimenti = archivio.trasferimenti.slice(0, 30);
+}
+
+async function sincronizza(archivio) {
+  const remoto = await leggiApplicazione();
+  if (!remoto) {
+    const titolo = `Sincronizzazione ${archivio.modalita} · non riuscita: l'applicazione non è raggiungibile`;
+    memorizzaMovimento(archivio, { tipo: "sincronizzazione", titolo, logon: "" });
+    await salva(archivio);
+    return { ok: false, errore: "Sincronizzazione non riuscita: l'applicazione non è raggiungibile.", modalita: archivio.modalita, movimenti: [titolo] };
+  }
+  const assegnati = raccogliAssegnati(archivio, remoto);
+  const perTecnico = new Map();
+  for (const voce of assegnati) {
+    if (!perTecnico.has(voce.logon)) perTecnico.set(voce.logon, []);
+    perTecnico.get(voce.logon).push(voce);
+  }
+  const movimenti = [];
+  if (perTecnico.size === 0) {
+    const titolo = `Sincronizzazione ${archivio.modalita} · nessuna assegnazione da mettere sul tablet`;
+    memorizzaMovimento(archivio, { tipo: "sincronizzazione", titolo, logon: "" });
+    movimenti.push(titolo);
+  }
+  for (const [logon, elenco] of perTecnico) {
+    applicaSulTablet(archivio, logon, elenco);
+    const titolo = titoloSincronizzazione(archivio.modalita, elenco);
+    const soggetto = elenco.find((voce) => voce.codice === "TK-2026-0031") || elenco[0];
+    memorizzaMovimento(archivio, {
+      tipo: "sincronizzazione",
+      titolo,
+      logon,
+      clienteId: soggetto?.clienteId || "",
+      soggettoId: soggetto?.id || "",
+    });
+    movimenti.push(`${logon}: ${titolo}`);
+  }
+  await salva(archivio);
+  return { ok: true, modalita: archivio.modalita, movimenti, tabletAggiornato: true };
+}
+
 async function pianifica(archivio, trasferimento) {
   const voce = { id: randomUUID(), quando: new Date().toISOString(), ...trasferimento };
   if (archivio.modalita === "manuale") {
@@ -776,17 +921,7 @@ async function esegui(archivio, voce) {
     const salvato = archivio.pending.find((pending) => pending.id === voce.pending.id);
     if (salvato) salvato.inoltrato = true;
   }
-  const soggettoId = idSoggetto(voce);
-  archivio.trasferimenti.unshift({
-    id: voce.id,
-    tipo: voce.tipo,
-    titolo: voce.titolo,
-    quando: new Date().toISOString(),
-    tecnico: logonSoggetto(archivio, voce, soggettoId),
-    clienteId: clienteSoggetto(archivio, voce, soggettoId),
-    soggettoId,
-  });
-  archivio.trasferimenti = archivio.trasferimenti.slice(0, 30);
+  memorizzaMovimento(archivio, voce);
   await salva(archivio);
 }
 
@@ -1212,7 +1347,10 @@ function pagina(archivio) {
   <main>
     <section>
       <h2>Modalità <span class="nuovo">Nuovo</span></h2>
-      <p class="meta">Ora è ${escape(archivio.modalita)}. In automatico i trasferimenti partono da soli. In manuale restano qui fino a Conferma. Una segnalazione critica, in manuale, resta in cima alla coda.</p>
+      <p class="meta">Ora è ${escape(archivio.modalita)}. Sincronizza, in manuale e in automatico, scrive una riga nel log e aggiorna il tablet con le assegnazioni, come TK-2026-0031 sull'operatore scelto. Gli altri trasferimenti, in manuale, restano qui fino a Conferma.</p>
+      <form method="post" action="/api/sincronizza">
+        <button type="submit">Sincronizza</button>
+      </form>
       <form method="post" action="/api/modalita">
         <input type="hidden" name="modalita" value="${archivio.modalita === "automatica" ? "manuale" : "automatica"}">
         <button type="submit">Passa a ${archivio.modalita === "automatica" ? "manuale" : "automatica"}</button>
@@ -1273,9 +1411,12 @@ const TIPI_LOG = {
   chiusura: "Chiusura",
   pending: "Pending",
   riassegnazione: "Riassegnazione",
+  sincronizzazione: "Sincronizzazione",
 };
 
 function idSoggetto(voce) {
+  if (voce.soggettoId) return voce.soggettoId;
+  if (voce.tipo === "sincronizzazione") return voce.elenco?.[0]?.id || "";
   if (voce.tipo === "tablet") return voce.voce?.id || "";
   if (voce.tipo === "chiusura") return voce.pacchetto?.ticket?.[0]?.id || voce.pacchetto?.interventi?.[0]?.id || voce.titolo || "";
   if (voce.tipo === "riassegnazione") return voce.movimento?.id || "";
@@ -1292,6 +1433,7 @@ function logonSoggetto(archivio, voce, id) {
 }
 
 function clienteSoggetto(archivio, voce, id) {
+  if (voce.clienteId) return String(voce.clienteId);
   const dalPacchetto = voce.pacchetto?.ticket?.[0]?.clienteId || voce.pacchetto?.interventi?.[0]?.clienteId || "";
   if (dalPacchetto) return String(dalPacchetto);
   return String(archivio.ticket[id]?.pacchetto?.ticket?.[0]?.clienteId || "");
