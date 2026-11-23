@@ -12,6 +12,7 @@ const SERVIZI = [
   { id: "assistenza", nome: "Assistenza", porta: 3021 },
   { id: "sincronia", nome: "Sincronia", porta: 3022 },
   { id: "macchina", nome: "Macchina", porta: 3023 },
+  { id: "assistenza-tecnica", nome: "Assistenza Tecnica Demo", porta: 3014 },
 ];
 
 let comandoInCorso = null;
@@ -144,8 +145,8 @@ function pagina() {
   <style>
     body { margin: 0; font-family: "Segoe UI", sans-serif; background: #f4f1ea; color: #1c2430; }
     header { background: #24343a; color: white; padding: 28px 32px; }
-    header p { margin: 8px 0 0; max-width: 40rem; }
-    main { padding: 28px 32px 64px; display: grid; gap: 24px; max-width: 46rem; }
+    header p { margin: 8px 0 0; max-width: 46rem; }
+    main { padding: 28px 32px 64px; display: grid; gap: 24px; max-width: 52rem; }
     section { background: white; border-radius: 16px; padding: 20px 22px; }
     h2 { margin: 0 0 14px; font-size: 1.2rem; }
     .azioni { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -160,12 +161,13 @@ function pagina() {
     strong[data-stato="spenta"] { color: #8a3b2b; }
     #esito { white-space: pre-wrap; min-height: 1.4em; margin: 16px 0 0; color: #24343a; }
     .nota { color: #5c6770; margin: 14px 0 0; }
+    pre { white-space: pre-wrap; background: #f4f1ea; border-radius: 10px; padding: 12px 14px; margin: 8px 0 0; }
   </style>
 </head>
 <body>
   <header>
     <h1>Pannello demo</h1>
-    <p>Avvia e spegne assistenza, sincronia e macchina. Lo stato di ciascuna si aggiorna da solo.</p>
+    <p>Avvia e spegne assistenza, sincronia, macchina e Assistenza Tecnica Demo. Lo stato di ciascuna si aggiorna da solo.</p>
   </header>
   <main>
     <section>
@@ -180,6 +182,13 @@ function pagina() {
       <h2>Stato</h2>
       <ul>${righe}</ul>
       <p class="nota" id="quando">Lettura dello stato in corso.</p>
+    </section>
+    <section>
+      <h2>Assistenza Tecnica Demo</h2>
+      <p>Porta 3014. Il codice non è in questo repository. <strong>Avvia le demo</strong> e <strong>Spegni le demo</strong> la includono. La cartella di lavoro è</p>
+      <pre>/Users/macair_andrea/Documents/ChatGPT/Progetto CRM/assistenza-demo-clone</pre>
+      <p>package.json di quella cartella non è stato letto da questo ambiente. Il comando usato è lo script di avvio del progetto:</p>
+      <pre>PORT=3014 npm start</pre>
     </section>
   </main>
   <script>

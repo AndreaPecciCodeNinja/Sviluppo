@@ -86,7 +86,7 @@ Pagina a parte, porta **3020**.
 node pannello-demo/server.mjs
 ```
 
-Apri http://127.0.0.1:3020/. **Avvia le demo** e **Spegni le demo** accendono e fermano assistenza (3021), sincronia (3022) e macchina (3023). Accanto ai pulsanti, lo stato di ciascuna è «accesa» o «spenta» e si aggiorna da solo.
+Apri http://127.0.0.1:3020/. **Avvia le demo** e **Spegni le demo** accendono e fermano assistenza (3021), sincronia (3022), macchina (3023) e Assistenza Tecnica Demo (3014). Accanto ai pulsanti, lo stato di ciascuna è «accesa» o «spenta» e si aggiorna da solo. Assistenza Tecnica Demo parte con `PORT=3014 npm start` dalla cartella `/Users/macair_andrea/Documents/ChatGPT/Progetto CRM/assistenza-demo-clone`. La porta 3011 resta libera.
 
 ## Demo Assistenza Tecnica
 
