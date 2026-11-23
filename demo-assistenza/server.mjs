@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const PORTA = 3012;
 const HOST = "127.0.0.1";
-const URL_SINCRO = process.env.SINCRO_INGRESSO || `http://${HOST}:${PORTA}/api/sincronia/ingresso`;
+const URL_SINCRO = process.env.SINCRO_INGRESSO || "http://127.0.0.1:3013/api/ingresso";
 const URL_SARA = process.env.SARA_URL || "http://127.0.0.1:3013/api/sara/dialogo";
 const RADICE = dirname(fileURLToPath(import.meta.url));
 const PERCORSO_SEED = join(RADICE, "seed.json");
@@ -119,6 +119,7 @@ const server = createServer(async (richiesta, risposta) => {
       });
     }
 
+    if (await gestisciSara(richiesta, risposta, url)) return;
     if (await gestisciManutenzione(richiesta, risposta, url)) return;
 
     json(risposta, 404, { errore: "Percorso non trovato." });
@@ -219,6 +220,10 @@ function applicaSincronizzazione(archivio, pacchetto) {
       }
     }
     applicaCampiMacchina(record, aggiornamento);
+    if (aggiornamento.segnalazioneIpad === true && !record.inviatoIl) {
+      record.daInviare = true;
+      record.segnalazioneImmediata = true;
+    }
     centralizzaTicketMacchina(archivio, record);
     ricevuti.push(ticketPerApp(record));
     ticketApplicati += 1;
@@ -528,6 +533,78 @@ function centralizzaTicketMacchina(archivio, ticket) {
   ticket.statoGestione = eCritica(archivio, ticket) ? "ticket in gestione urgente" : "ordinario";
 }
 
+async function gestisciSara(richiesta, risposta, url) {
+  if (richiesta.method === "GET" && url.pathname === "/api/sara/stato") {
+    const archivio = await carica();
+    return json(risposta, 200, {
+      ticket: (archivio.ticket ?? []).map((ticket) => ({
+        id: ticket.id,
+        titolo: ticket.titolo,
+        logonTecnico: ticket.logonTecnico,
+        stato: ticket.stato,
+        origine: ticket.origine ?? null,
+        tipologia: ticket.tipologia ?? null,
+        statoGestione: ticket.statoGestione ?? null,
+        etichettaSincronia: ticket.etichettaSincronia ?? null,
+        anomaliaRispettoAlPiano: ticket.anomaliaRispettoAlPiano === true,
+        daInviare: ticket.daInviare === true,
+        segnalazioneImmediata: ticket.segnalazioneImmediata === true,
+      })),
+      interventi: (archivio.interventi ?? []).map((voce) => ({
+        id: voce.id,
+        titolo: voce.titolo,
+        logonTecnico: voce.logonTecnico,
+        stato: voce.stato,
+        appuntamento: voce.appuntamento ?? null,
+      })),
+      pending: archivio.pending ?? [],
+      tecnici: (archivio.tecnici ?? []).map((tecnico) => ({ logon: tecnico.logon, nome: tecnico.nome })),
+    }), true;
+  }
+  if (richiesta.method !== "POST") return false;
+  if (url.pathname !== "/api/sara/allinea" && url.pathname !== "/api/sara/pending") return false;
+  const campi = await leggiOggetto(richiesta);
+  const archivio = await carica();
+  if (url.pathname === "/api/sara/pending") {
+    registraPendingSara(archivio, campi);
+    await salva(archivio);
+    return json(risposta, 200, { pending: pendingPubblico(archivio, archivio.pending.find((voce) => voce.id === campi.id)) }), true;
+  }
+  for (const id of campi.etichette ?? []) {
+    const ticket = (archivio.ticket ?? []).find((voce) => voce.id === id);
+    if (ticket) ticket.etichettaSincronia = "sincronizzato correttamente";
+  }
+  for (const voce of campi.interventi ?? []) {
+    const intervento = (archivio.interventi ?? []).find((candidato) => candidato.id === voce.id);
+    if (intervento && voce.logonTecnico) {
+      intervento.logonTecnico = voce.logonTecnico;
+      intervento.aggiornato = new Date().toISOString();
+    }
+  }
+  for (const voce of campi.pending ?? []) registraPendingSara(archivio, voce);
+  await salva(archivio);
+  return json(risposta, 200, { messaggio: "Stato allineato da Sara." }), true;
+}
+
+function registraPendingSara(archivio, campi) {
+  archivio.pending = Array.isArray(archivio.pending) ? archivio.pending : [];
+  const id = String(campi.id ?? "").trim();
+  if (!id) return;
+  let voce = archivio.pending.find((pending) => pending.id === id);
+  if (!voce) {
+    voce = { id, creato: new Date().toISOString(), archiviato: false };
+    archivio.pending.unshift(voce);
+  }
+  voce.tipologiaId = campi.tipologiaId || voce.tipologiaId || "";
+  voce.tipologia = campi.tipologia || voce.tipologia || voce.tipologiaId;
+  voce.causale = campi.causale || voce.causale || "";
+  voce.nota = campi.nota ?? voce.nota ?? "";
+  voce.riferimento = campi.riferimento || voce.riferimento || "";
+  voce.quando = campi.quando || voce.quando || new Date().toISOString();
+  voce.aggiornato = new Date().toISOString();
+  if (campi.archiviato === true) voce.archiviato = true;
+}
+
 async function gestisciManutenzione(richiesta, risposta, url) {
   const percorso = url.pathname;
   if (richiesta.method === "GET" && percorso === "/api/sincronia/ingresso") {
@@ -768,8 +845,6 @@ async function completaInvio(voce) {
   }
   const archivio = await carica();
   if (partito) {
-    const ticket = (archivio.ticket ?? []).find((candidato) => candidato.id === voce.soggetto?.id);
-    if (ticket) ticket.etichettaSincronia = "sincronizzato correttamente";
     archivio.inviiSincronia.unshift({ ...voce, esito: "inviato" });
   } else {
     archivio.atteseConferma.push(voce);
@@ -993,7 +1068,8 @@ function sezionePredittiva(archivio) {
   const opzioniTipi = archivio.tipologiePending.map((tipo) => `<option value="${escape(tipo.id)}">${escape(tipo.nome)}</option>`).join("");
   const pending = archivio.pending.map((voce) => {
     const pubblico = pendingPubblico(archivio, voce);
-    return `<li>${escape(pubblico.tipologia)} · ${escape(pubblico.nota || "senza nota")} · ${pubblico.archiviato ? "archiviato" : "aperto"} <span class="meta">${escape(pubblico.id)}</span></li>`;
+    const causale = pubblico.causale ? ` · causale ${escape(pubblico.causale)}` : "";
+    return `<li>${escape(pubblico.tipologia)}${causale} · ${escape(pubblico.nota || "senza nota")} · ${pubblico.archiviato ? "archiviato" : "aperto"} <span class="meta">${escape(pubblico.id)}</span></li>`;
   }).join("");
   const coda = archivio.codaAssegnazioni.slice(0, 6).map((voce) => `<li>${escape(voce.titolo || voce.ticketId)} → ${escape(voce.nome)}</li>`).join("");
   const dialogo = archivio.dialogoAda.slice(0, 4).map((voce) => `<li>${escape(voce.testo)} <span class="meta">${escape(voce.risposta)}</span></li>`).join("");
@@ -1004,8 +1080,8 @@ function sezionePredittiva(archivio) {
     <p class="meta">Ticket della macchina, con origine e segno di anomalia rispetto al piano. Le parti aggiunte portano il contrassegno Nuovo.</p>
     ${elenco || "<p class=\"meta\">Nessun ticket della macchina ancora. Partono dalla lavatrice simulata.</p>"}
     <h3>Invio alla sincronia <span class="nuovo">Nuovo</span></h3>
-    <p class="meta">Modalità attuale: ${escape(modalita)}. In automatico un ticket nuovo o assegnato parte subito. In manuale parte dopo Conferma invio.</p>
-    ${(archivio.inviiSincronia ?? []).slice(0, 5).map((voce) => `<p class="ok">${escape(voce.evento)} · ${escape(voce.soggetto?.titolo || voce.soggetto?.id || "")} · sincronizzato correttamente</p>`).join("")}
+    <p class="meta">Modalità attuale: ${escape(modalita)}. In automatico un ticket nuovo o assegnato parte subito verso la sincronia. In manuale parte dopo Conferma invio. La label «sincronizzato correttamente» arriva quando Sara conferma il trasferimento.</p>
+    ${(archivio.inviiSincronia ?? []).slice(0, 5).map((voce) => `<p class="ok">${escape(voce.evento)} · ${escape(voce.soggetto?.titolo || voce.soggetto?.id || "")} · inviato alla sincronia</p>`).join("")}
     <form class="riga" method="post" action="/api/sincronia/modalita">
       <input type="hidden" name="modalita" value="${modalita === "automatica" ? "manuale" : "automatica"}">
       <button class="secondario" type="submit">Passa a ${modalita === "automatica" ? "manuale" : "automatica"}</button>

@@ -6,3 +6,4 @@ build/
 .swiftpm/
 *.moved-aside
 demo-assistenza/dati/
+demo-sincronia/dati/

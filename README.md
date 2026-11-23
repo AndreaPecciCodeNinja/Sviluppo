@@ -91,7 +91,7 @@ Se il server è spento, l'app iPad continua a funzionare con l'archivio sul disp
 
 ## Macchina simulata
 
-Servizio a parte, porta **3014**. Il tipo di macchina è il file `demo-macchina/macchine/lavatrice-lavanderia.json` (lavatrice di lavanderia industriale). I parametri di funzionamento e di consumo cambiano in continuo. I comandi generano i ticket e li inviano a `POST /api/sincronizzazione` della demo sulla porta 3012.
+Servizio a parte, porta **3014**. Il tipo di macchina è il file `demo-macchina/macchine/lavatrice-lavanderia.json` (lavatrice di lavanderia industriale). I parametri di funzionamento e di consumo cambiano in continuo. I comandi generano i ticket e li inviano alla sincronia, porta 3013.
 
 ```bash
 node demo-macchina/server.mjs
@@ -99,7 +99,17 @@ node demo-macchina/server.mjs
 
 Poi apri http://127.0.0.1:3014/. Le parti nuove sono segnate con **Nuovo**.
 
-Sulla demo, in **Manutenzione predittiva**, i ticket della macchina mostrano origine e anomalia rispetto al piano. Un ticket nuovo o assegnato parte verso la sincronia: subito in modalità automatica, dopo **Conferma invio** in modalità manuale. Lo stato critico è «ticket in gestione urgente» e, a invio riuscito, compare «sincronizzato correttamente». Da lì si scambia il tecnico di un intervento già assegnato, si gestiscono le tipologie di pending, si allega il manuale e si legge il workflow della macchina. Ada mette l'assegnazione in coda e scrive a Sara.
+Sulla demo, in **Manutenzione predittiva**, i ticket della macchina mostrano origine e anomalia rispetto al piano. Un ticket nuovo o assegnato parte verso la sincronia: subito in modalità automatica, dopo **Conferma invio** in modalità manuale. Lo stato critico è «ticket in gestione urgente». La label «sincronizzato correttamente» la scrive Sara, quando il suo report coincide.
+
+## Sincronia
+
+Porta **3013**. Va avviata con la demo già accesa.
+
+```bash
+node demo-sincronia/server.mjs
+```
+
+Poi apri http://127.0.0.1:3013/. La macchina parla solo con questa porta. La sincronia inoltra ogni ticket all'applicazione e, se la tipologia è critica, lo segnala sul tablet del tecnico. In automatico il trasferimento parte da solo. In manuale parte da **Conferma**. Sara pubblica il report per operatore e, se tablet e applicazione non coincidono, ritrasferisce lei: il suo stato fa fede. Un cambio tecnico toglie l'intervento dal primo tablet e lo mette sul secondo. Se l'intervento era già in corso, torna in pending con la causale e rientra sull'applicazione. Le parti nuove sono segnate con **Nuovo**.
 
 ## Dati sul dispositivo
 
