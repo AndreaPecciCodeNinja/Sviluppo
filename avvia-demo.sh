@@ -117,7 +117,12 @@ avvia_assistenza_tecnica() {
   : > "$STATO/$nome.log"
   (
     cd "$ASSISTENZA_TECNICA" || exit 1
-    nohup env PORT=3014 npm start >>"$STATO/$nome.log" 2>&1 &
+    nohup env PORT=3014 \
+      SINCRO_URL="http://127.0.0.1:3022/api/ingresso" \
+      SINCRO_INGRESSO="http://127.0.0.1:3022/api/ingresso" \
+      SYNC_URL="http://127.0.0.1:3022/api/ingresso" \
+      NEXT_PUBLIC_SINCRO_URL="http://127.0.0.1:3022/api/ingresso" \
+      npm start >>"$STATO/$nome.log" 2>&1 &
     echo $! > "$STATO/$nome.pid"
   )
   if ! attendi "$porta" "Assistenza Tecnica Demo" "$nome" 80; then

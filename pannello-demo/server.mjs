@@ -200,7 +200,7 @@ node pannello-demo/gestisci.mjs avvia crm</pre>
       <p>Porta 3014. Il codice non è in questo repository. <strong>Avvia le demo</strong> e <strong>Spegni le demo</strong> la includono. La cartella di lavoro è</p>
       <pre>/Users/macair_andrea/Documents/ChatGPT/Progetto CRM/assistenza-demo-clone</pre>
       <p>package.json di quella cartella non è stato letto da questo ambiente. Il comando usato è lo script di avvio del progetto:</p>
-      <pre>PORT=3014 npm start</pre>
+      <pre>PORT=3014 SINCRO_URL=http://127.0.0.1:3022/api/ingresso npm start</pre>
     </section>
   </main>
   <script>

@@ -466,6 +466,7 @@ final class ArchivioLocale {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: percorso.path) else {
             applica(Self.dimostrativo())
+            assicuraAccessiDimostrativi()
             salva()
             return
         }
@@ -484,6 +485,9 @@ final class ArchivioLocale {
                 return data
             }
             applica(try decoder.decode(ArchivioFile.self, from: dati))
+            if assicuraAccessiDimostrativi() {
+                salva()
+            }
             caricaManutenzione()
         } catch {
             let backup = percorso.deletingLastPathComponent().appendingPathComponent("archivio-illeggibile.json")
@@ -491,6 +495,7 @@ final class ArchivioLocale {
             try? fileManager.copyItem(at: percorso, to: backup)
             erroreSalvataggio = "L'archivio locale era illeggibile. È stata tenuta una copia e sono stati ripristinati i dati dimostrativi."
             applica(Self.dimostrativo())
+            assicuraAccessiDimostrativi()
             schede = [:]
             pendingInterventi = [:]
             urgenzeViste = []
@@ -529,6 +534,42 @@ final class ArchivioLocale {
         )
         guard let dati = try? JSONEncoder().encode(file) else { return }
         try? dati.write(to: percorsoManutenzione, options: .atomic)
+    }
+
+    /// I tre accessi scritti in schermata restano validi anche se l'archivio
+    /// sull'iPad è vecchio o è stato importato senza Paolo Conti.
+    @discardableResult
+    private func assicuraAccessiDimostrativi() -> Bool {
+        let hash = Impronta.di(DatiDimostrativi.password)
+        let noti = [
+            (DatiDimostrativi.marco, "Marco Bianchi"),
+            (DatiDimostrativi.lucia, "Lucia Ferrari"),
+            ("paolo.conti", "Paolo Conti"),
+        ]
+        var mutato = false
+        for (logon, nome) in noti {
+            if let index = tecnici.firstIndex(where: { $0.logon == logon }) {
+                if tecnici[index].passwordHash != hash {
+                    tecnici[index].passwordHash = hash
+                    mutato = true
+                }
+                if tecnici[index].nome.isEmpty {
+                    tecnici[index].nome = nome
+                    mutato = true
+                }
+            } else {
+                tecnici.append(
+                    Tecnico(
+                        id: Tecnico.id(perLogon: logon),
+                        logon: logon,
+                        nome: nome,
+                        passwordHash: hash
+                    )
+                )
+                mutato = true
+            }
+        }
+        return mutato
     }
 
     private func applica(_ file: ArchivioFile) {

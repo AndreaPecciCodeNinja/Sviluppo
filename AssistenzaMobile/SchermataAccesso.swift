@@ -138,7 +138,7 @@ struct SchermataAccesso: View {
                     .font(.caption.weight(.semibold))
                 Text("\(DatiDimostrativi.marco)  ·  \(DatiDimostrativi.lucia)")
                 Text("Password: \(DatiDimostrativi.password)")
-                Text("L'esempio di Paolo Conti aggiunge il logon paolo.conti con la stessa password.")
+                Text("paolo.conti usa la stessa password.")
             }
             .font(.caption)
             .foregroundStyle(.secondary)

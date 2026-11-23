@@ -27,6 +27,11 @@ const ETICHETTE_TICKET = {
 
 const server = createServer(async (richiesta, risposta) => {
   try {
+    if (richiesta.method === "OPTIONS") {
+      risposta.writeHead(204, intestazioniCors({ "Cache-Control": "no-store" }));
+      risposta.end();
+      return;
+    }
     const url = new URL(richiesta.url ?? "/", `http://${HOST}:${PORTA}`);
     if (richiesta.method === "GET" && url.pathname === "/") {
       const archivio = await carica();
@@ -126,7 +131,7 @@ const server = createServer(async (richiesta, risposta) => {
       const esito = applicaSincronizzazione(archivio, pacchetto);
       if (esito.errore) return json(risposta, esito.codice, { errore: esito.errore });
       await salva(archivio);
-      await avvisaSincronia();
+      void avvisaSincronia();
       return json(risposta, 200, {
         messaggio: "Aggiornamenti registrati.",
         interventi: esito.interventi,
@@ -135,6 +140,11 @@ const server = createServer(async (richiesta, risposta) => {
       });
     }
 
+    if (richiesta.method === "POST" && sembraInvioVersoSincronia(url.pathname)) {
+      const voce = await leggiOggetto(richiesta);
+      const esito = await inoltraIngressoSincronia(voce);
+      return json(risposta, esito.codice, esito.corpo);
+    }
     if (await gestisciSara(richiesta, risposta, url)) return;
     if (await gestisciManutenzione(richiesta, risposta, url)) return;
 
@@ -648,13 +658,22 @@ function leggiCorpo(richiesta) {
   });
 }
 
+function intestazioniCors(extra) {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    ...extra,
+  };
+}
+
 function json(risposta, codice, corpo) {
   const dati = Buffer.from(JSON.stringify(corpo));
-  risposta.writeHead(codice, {
+  risposta.writeHead(codice, intestazioniCors({
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": dati.length,
     "Cache-Control": "no-store",
-  });
+  }));
   risposta.end(dati);
 }
 
@@ -825,7 +844,8 @@ async function gestisciManutenzione(richiesta, risposta, url) {
     archivio.ingressoSincronia.unshift({ ...voce, ricevuto: new Date().toISOString() });
     archivio.ingressoSincronia = archivio.ingressoSincronia.slice(0, 40);
     await salva(archivio);
-    return json(risposta, 200, { messaggio: "Ticket ricevuto in sincronia.", id: voce.id }), true;
+    const esito = await inoltraIngressoSincronia(voce);
+    return json(risposta, esito.codice, esito.corpo), true;
   }
   if (richiesta.method !== "POST") return false;
 
@@ -1025,6 +1045,37 @@ async function confermaInvio(archivio, id) {
   const [voce] = archivio.atteseConferma.splice(indice, 1);
   await salva(archivio);
   return completaInvio(voce);
+}
+
+function sembraInvioVersoSincronia(percorso) {
+  return [
+    "/api/ingresso",
+    "/api/ticket",
+    "/api/ticket/invia",
+    "/api/tickets",
+    "/api/tickets/invia",
+    "/api/invia",
+    "/api/sync",
+    "/api/sincronia",
+  ].includes(percorso);
+}
+
+async function inoltraIngressoSincronia(voce) {
+  try {
+    const risposta = await fetch(URL_SINCRO, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(voce ?? {}),
+      signal: AbortSignal.timeout(4000),
+    });
+    const corpo = await risposta.json().catch(() => ({}));
+    return { codice: risposta.status, corpo };
+  } catch {
+    return {
+      codice: 502,
+      corpo: { ok: false, errore: "La sincronia sulla porta 3022 non è raggiungibile. Il ticket resta da inviare." },
+    };
+  }
 }
 
 async function completaInvio(voce) {

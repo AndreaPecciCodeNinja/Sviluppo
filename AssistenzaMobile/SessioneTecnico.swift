@@ -15,9 +15,13 @@ final class SessioneTecnico {
 
     func accedi(logon: String, password: String) -> Bool {
         let chiave = logon.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !chiave.isEmpty, !password.isEmpty,
-              let tecnico = archivio.tecnico(logon: chiave),
-              Impronta.di(password) == tecnico.passwordHash else {
+        let inserita = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !chiave.isEmpty, !inserita.isEmpty,
+              let tecnico = archivio.tecnico(logon: chiave) else {
+            return false
+        }
+        let impronta = Impronta.di(inserita)
+        guard impronta == tecnico.passwordHash || inserita == tecnico.passwordHash else {
             return false
         }
         tecnicoID = tecnico.id

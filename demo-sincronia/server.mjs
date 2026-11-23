@@ -127,6 +127,16 @@ async function gestisci(richiesta, risposta) {
     await salva(archivio);
     return rispondi(risposta, jsonRichiesto, { tipologieCritiche: archivio.tipologieCritiche });
   }
+  if (sembraInvioTicket(campi)) {
+    const esito = await riceviDallApplicazione(archivio, campi);
+    return json(risposta, esito.ok ? 200 : 400, esito);
+  }
+  memorizzaMovimento(archivio, {
+    tipo: "sincronizzazione",
+    titolo: `Invio non accettato su ${percorso}: il corpo non contiene un ticket.`,
+    logon: "",
+  });
+  await salva(archivio);
   return json(risposta, 404, { errore: "Percorso non trovato." });
 }
 
@@ -266,9 +276,17 @@ async function riceviDallaMacchina(archivio, pacchetto) {
 }
 
 function soggettoIngresso(voce) {
-  if (voce?.soggetto && typeof voce.soggetto === "object") return voce.soggetto;
-  if (voce?.ticket && typeof voce.ticket === "object") return voce.ticket;
-  return voce ?? {};
+  const radice = voce?.data || voce?.payload || voce?.body || voce;
+  if (radice?.soggetto && typeof radice.soggetto === "object") return radice.soggetto;
+  if (radice?.ticket && typeof radice.ticket === "object" && !Array.isArray(radice.ticket)) return radice.ticket;
+  return radice ?? {};
+}
+
+function sembraInvioTicket(voce) {
+  if (!voce || typeof voce !== "object") return false;
+  if (Array.isArray(voce.ticket) || Array.isArray(voce.tickets)) return true;
+  const soggetto = soggettoIngresso(voce);
+  return Boolean(soggetto.id || soggetto.codice || soggetto.code || soggetto.titolo || soggetto.title || soggetto.oggetto);
 }
 
 function statoNormalizzato(soggetto) {
@@ -297,13 +315,14 @@ const CHIAVI_OPERATORE = [
   "logonTecnico", "logon", "tecnico", "operatore", "assegnatoA", "assegnatario",
   "tecnicoNome", "nomeTecnico", "nomeOperatore", "operator", "assignee", "assignedTo",
   "technician", "technicianName", "utente", "user",
+  "fullName", "nomeCompleto", "displayName", "responsabile", "assegnato",
 ];
 
 function testoOperatore(valore) {
   if (valore == null) return "";
   if (typeof valore === "string" || typeof valore === "number") return String(valore).trim();
   if (typeof valore === "object") {
-    return testoOperatore(valore.logon || valore.logonTecnico || valore.nome || valore.name || valore.email || valore.utente);
+    return testoOperatore(valore.logon || valore.logonTecnico || valore.nome || valore.name || valore.fullName || valore.nomeCompleto || valore.displayName || valore.email || valore.utente);
   }
   return "";
 }
@@ -636,17 +655,19 @@ async function registraTicketInviato(archivio, voce, soggetto, id) {
   archivio.ticket[id].inoltrato = true;
   archivio.rifiuti = (archivio.rifiuti ?? []).filter((rifiuto) => rifiuto.id !== id);
   togliId(archivio, id);
+  mettiSulTablet(archivio, {
+    id,
+    codice,
+    titolo,
+    logon,
+    clienteId,
+    stato: "aperto",
+    genere: "ticket",
+  });
   await salva(archivio);
   await avvisaApplicazione({ id, risolto: true });
-  await pianifica(archivio, {
-    tipo: "tablet",
-    immediata: true,
-    logon,
-    voce: { id, titolo, codice, stato: "aperto", segnalazioneImmediata: false, genere: "ticket" },
-    titolo,
-  });
   if (archivio.modalita === "automatica") await verificaSara();
-  return { ok: true, inviato: true, stato: "inviato", id, codice, logon, titolo };
+  return { ok: true, inviato: true, stato: "inviato", id, codice, logon, titolo, messaggio: "Ticket messo sul tablet di " + (scelto.nome || logon) + "." };
 }
 
 async function clienteIdDalNome(nome) {
@@ -661,9 +682,28 @@ async function clienteIdDalNome(nome) {
 }
 
 async function riceviDallApplicazione(archivio, voce) {
+  const elenco = Array.isArray(voce?.ticket) ? voce.ticket : (Array.isArray(voce?.tickets) ? voce.tickets : null);
+  if (elenco) {
+    if (elenco.length === 0) {
+      const motivo = "Invio non accettato: l'elenco dei ticket è vuoto.";
+      memorizzaMovimento(archivio, { tipo: "sincronizzazione", titolo: motivo, logon: "" });
+      await salva(archivio);
+      return { ok: false, errore: motivo };
+    }
+    if (voce.tecnico || voce.operatore) return riceviDallaMacchina(archivio, { ...voce, ticket: elenco });
+    const esiti = [];
+    for (const ticket of elenco) esiti.push(await riceviDallApplicazione(archivio, { ...voce, ticket, tickets: undefined }));
+    const ok = esiti.some((esito) => esito.ok);
+    return { ok, esiti, messaggio: ok ? "Ticket ricevuto." : (esiti[0]?.errore || "Nessun ticket accettato.") };
+  }
   const soggetto = arricchisciSoggetto(soggettoIngresso(voce));
   const id = String(soggetto.id || soggetto.codice || "").trim();
-  if (!id) return { ok: false, errore: "Manca il soggetto." };
+  if (!id) {
+    const motivo = "Invio non accettato: manca l'id o il codice del ticket. Il tablet non è stato modificato.";
+    memorizzaMovimento(archivio, { tipo: "sincronizzazione", titolo: motivo, logon: "" });
+    await salva(archivio);
+    return { ok: false, errore: motivo };
+  }
   if (sembraIntervento(soggetto)) {
     return registraInterventoAssegnato(archivio, voce, soggetto, id);
   }
@@ -855,7 +895,43 @@ function memorizzaMovimento(archivio, voce) {
   archivio.trasferimenti = archivio.trasferimenti.slice(0, 30);
 }
 
+async function prelevaDaAssistenzaTecnica(archivio) {
+  const base = process.env.ASSISTENZA_TECNICA_URL || "http://127.0.0.1:3014";
+  const percorsi = [
+    "/api/tickets",
+    "/api/ticket",
+    "/api/tickets/da-inviare",
+    "/api/ticket/da-inviare",
+    "/ticket/cmws78c2c00podddlra6cytp5",
+  ];
+  for (const percorso of percorsi) {
+    let corpo;
+    try {
+      const risposta = await fetch(`${base}${percorso}`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(800),
+      });
+      if (!risposta.ok) continue;
+      const tipo = risposta.headers.get("content-type") || "";
+      if (!tipo.includes("json")) continue;
+      corpo = await risposta.json();
+    } catch {
+      continue;
+    }
+    const elenco = Array.isArray(corpo) ? corpo : (corpo?.ticket || corpo?.tickets || corpo?.data || [corpo]);
+    const ticket = (Array.isArray(elenco) ? elenco : [elenco]).filter((voce) => voce && typeof voce === "object");
+    for (const voce of ticket) {
+      const stato = String(voce.stato || voce.status || "").toLowerCase().replace(/\s+/g, "_");
+      const daInviare = !stato || /da_inviare|to_send|unsent|pending_send/.test(stato);
+      if (!daInviare) continue;
+      if (!(voce.id || voce.codice || voce.code || voce.titolo || voce.title)) continue;
+      await riceviDallApplicazione(archivio, { origine: "assistenza-tecnica", ...voce, ticket: undefined, tickets: undefined });
+    }
+  }
+}
+
 async function sincronizza(archivio) {
+  await prelevaDaAssistenzaTecnica(archivio);
   const remoto = await leggiApplicazione();
   if (!remoto) {
     const titolo = `Sincronizzazione ${archivio.modalita} · non riuscita: l'applicazione non è raggiungibile`;
