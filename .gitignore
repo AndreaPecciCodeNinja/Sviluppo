@@ -7,3 +7,4 @@ build/
 *.moved-aside
 demo-assistenza/dati/
 demo-sincronia/dati/
+.demo/

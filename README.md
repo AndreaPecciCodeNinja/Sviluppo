@@ -67,6 +67,17 @@ Il file può essere un oggetto con `tecnici`, `clienti` (oppure `utenti`), `inte
 
 Campi principali di un intervento: `titolo`, `logonTecnico`, `appuntamento` (ISO 8601), `clienteId` oppure un oggetto `cliente`, `stato` (`programmato`, `in_corso`, `in_attesa`, `completato`, `annullato`), `priorita` (`bassa`, `media`, `alta`, `urgente`), `note`.
 
+## Avvio dei tre servizi
+
+Dalla cartella del repository. Su macOS è `~/Documents/Sviluppo`.
+
+```bash
+./avvia-demo.sh
+./spegni-demo.sh
+```
+
+Il primo avvia in background l'assistenza sulla porta 3012, la sincronia sulla 3013 e la macchina sulla 3014. Il secondo le ferma. Serve `node` nel PATH. I log restano in `.demo/`.
+
 ## Demo Assistenza Tecnica
 
 Il server è in `demo-assistenza/`. I dati restano nel file locale `demo-assistenza/dati/archivio.json`, creato al primo avvio dal seed. Non serve installare pacchetti.
