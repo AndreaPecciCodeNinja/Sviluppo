@@ -41,6 +41,9 @@ struct EsitoImportazione: Equatable {
                 : "Nessun dato importato.")
             : "Salvato sull'iPad: \(pezzi.joined(separator: ", "))."
 
+        if !avvisi.isEmpty {
+            testo += " " + avvisi.joined(separator: " ")
+        }
         if !logon.isEmpty {
             testo += " Assegnazioni per: \(logon.joined(separator: ", "))."
             if let logonCorrente, logon.contains(logonCorrente) {
@@ -99,6 +102,7 @@ enum ImportatoreJSON {
         let clienti = leggiElenco(oggetto, chiavi: ["clienti", "utenti"], esito: &esito)
         let interventi = leggiElenco(oggetto, chiavi: ["interventi"], esito: &esito)
         let ticket = leggiElenco(oggetto, chiavi: ["ticket"], esito: &esito)
+        leggiAvvisi(oggetto, esito: &esito)
 
         if tecnici.isEmpty && clienti.isEmpty && interventi.isEmpty && ticket.isEmpty && esito.avvisi.isEmpty {
             throw ErroreImportazione(messaggio: "Gli elenchi nel file sono vuoti.")
@@ -608,6 +612,20 @@ enum ImportatoreJSON {
             }
         }
         return risultato.sorted { $0.data < $1.data }
+    }
+
+    private static func leggiAvvisi(_ oggetto: [String: Any], esito: inout EsitoImportazione) {
+        guard let elenco = oggetto["avvisi"] as? [Any] else { return }
+        for voce in elenco {
+            if let testo = voce as? String {
+                let pulito = testo.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !pulito.isEmpty { esito.avvisi.append(pulito) }
+            } else if let dizionario = voce as? [String: Any] {
+                let testo = (dizionario["motivo"] as? String) ?? (dizionario["messaggio"] as? String) ?? ""
+                let pulito = testo.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !pulito.isEmpty { esito.avvisi.append(pulito) }
+            }
+        }
     }
 
     private static func leggiElenco(_ oggetto: [String: Any], chiavi: [String], esito: inout EsitoImportazione) -> [Any] {

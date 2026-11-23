@@ -213,9 +213,76 @@ function nomeClientePulito(nome) {
   return String(nome ?? "").replace(/\s*\(demo\)\s*/gi, " ").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-async function registraInterventoAssegnato(archivio, soggetto, id) {
-  const logon = await logonOperatore(soggetto.logonTecnico || soggetto.tecnico || soggetto.operatore);
-  if (!logon) return { ok: false, errore: "Manca l'operatore." };
+const CHIAVI_OPERATORE = [
+  "logonTecnico", "logon", "tecnico", "operatore", "assegnatoA", "assegnatario",
+  "tecnicoNome", "nomeTecnico", "nomeOperatore", "operator", "assignee", "assignedTo",
+  "technician", "technicianName", "utente", "user",
+];
+
+function testoOperatore(valore) {
+  if (valore == null) return "";
+  if (typeof valore === "string" || typeof valore === "number") return String(valore).trim();
+  if (typeof valore === "object") {
+    return testoOperatore(valore.logon || valore.logonTecnico || valore.nome || valore.name || valore.email || valore.utente);
+  }
+  return "";
+}
+
+function operatoreScelto(voce, soggetto) {
+  const fonti = [soggetto, voce, soggetto?.assegnazione, voce?.assegnazione, soggetto?.assignment, voce?.assignment];
+  for (const fonte of fonti) {
+    if (!fonte || typeof fonte !== "object") continue;
+    for (const chiave of CHIAVI_OPERATORE) {
+      const testo = testoOperatore(fonte[chiave]);
+      if (testo) return testo;
+    }
+  }
+  return "";
+}
+
+function arricchisciSoggetto(soggetto) {
+  const copia = { ...(soggetto ?? {}) };
+  if (!String(copia.titolo ?? "").trim()) copia.titolo = copia.title || copia.oggetto || "";
+  if (!String(copia.codice ?? "").trim()) copia.codice = copia.code || copia.codiceTicket || "";
+  if (!String(copia.id ?? "").trim()) copia.id = copia.ticketId || copia.idTicket || "";
+  if (!String(copia.cliente ?? "").trim() && !String(copia.clienteNome ?? "").trim()) {
+    const cliente = copia.client;
+    copia.cliente = typeof cliente === "string" ? cliente : (cliente?.nome || cliente?.name || copia.clientName || "");
+  }
+  const stato = statoNormalizzato(copia.stato || copia.status || "");
+  if (["to_send", "da_inviare", "unsent", "pending_send"].includes(stato)) copia.stato = "da_inviare";
+  else if (!copia.stato && copia.status) copia.stato = copia.status;
+  return copia;
+}
+
+async function risolviOperatoreScelto(testo) {
+  const richiesto = String(testo ?? "").trim();
+  if (!richiesto) {
+    return { logon: "", motivo: "Assegnazione non possibile: manca l'operatore scelto. Il ticket non è stato spostato su un altro tecnico." };
+  }
+  const remoto = await leggiApplicazione();
+  const tecnici = remoto?.tecnici ?? [];
+  if (!tecnici.length) {
+    return { logon: "", motivo: "Assegnazione non possibile: l'elenco dei tecnici non è raggiungibile. Il ticket non è stato spostato su un altro tecnico." };
+  }
+  const chiave = normalizza(richiesto);
+  const localeEmail = chiave.includes("@") ? chiave.split("@")[0] : chiave;
+  const compatto = localeEmail.replace(/[\s.]+/g, "");
+  const tecnico = tecnici.find((voce) => {
+    const logon = normalizza(voce.logon);
+    const nome = normalizza(voce.nome).replace(/[\s.]+/g, "");
+    return logon === chiave || logon === localeEmail || nome === compatto || logon.replace(/\./g, "") === compatto;
+  });
+  if (!tecnico) {
+    return { logon: "", motivo: `Assegnazione non possibile: l'operatore «${richiesto}» non è tra i tecnici. Il ticket non è stato spostato su un altro tecnico.` };
+  }
+  return { logon: tecnico.logon, nome: tecnico.nome, motivo: "" };
+}
+
+async function registraInterventoAssegnato(archivio, voce, soggetto, id) {
+  const scelto = await risolviOperatoreScelto(operatoreScelto(voce, soggetto));
+  if (!scelto.logon) return rifiutaAssegnazione(archivio, { id, codice: soggetto.codice, titolo: soggetto.titolo, motivo: scelto.motivo, richiesto: operatoreScelto(voce, soggetto) });
+  const logon = scelto.logon;
   const appuntamento = normalizzaData(soggetto.appuntamento);
   const stato = normalizzaStatoIntervento(soggetto.stato);
   const titolo = String(soggetto.titolo ?? "").trim() || String(soggetto.codice ?? "").trim() || id;
@@ -329,6 +396,7 @@ async function assegnazioniTecnico(logon) {
     clienti: (remoto?.clienti ?? []).filter((cliente) => [...perId.values()].some((voce) => voce.clienteId === cliente.id)),
     interventi: [...perId.values()],
     ticket: (remoto?.ticket ?? []).filter((voce) => normalizza(voce.logonTecnico) === canonico),
+    avvisi: (remoto?.avvisi ?? []).filter((voce) => !voce.logon || normalizza(voce.logon) === canonico).map((voce) => voce.motivo).filter(Boolean),
   };
 }
 
@@ -373,14 +441,56 @@ function pacchettoDelTicket(pacchetto, ticket, logon) {
   };
 }
 
-async function registraTicketInviato(archivio, soggetto, id) {
+async function rifiutaAssegnazione(archivio, voce) {
+  const motivo = String(voce.motivo || "Assegnazione non possibile. Il ticket non è stato spostato su un altro tecnico.");
+  archivio.rifiuti = Array.isArray(archivio.rifiuti) ? archivio.rifiuti : [];
+  archivio.rifiuti = archivio.rifiuti.filter((rifiuto) => rifiuto.id !== voce.id);
+  archivio.rifiuti.unshift({
+    id: voce.id || "",
+    codice: voce.codice || "",
+    titolo: voce.titolo || "",
+    motivo,
+    richiesto: voce.richiesto || "",
+    quando: new Date().toISOString(),
+  });
+  archivio.rifiuti = archivio.rifiuti.slice(0, 20);
+  await salva(archivio);
+  await avvisaApplicazione({
+    id: voce.id || "",
+    codice: voce.codice || "",
+    titolo: voce.titolo || "",
+    motivo,
+    logon: "",
+    richiesto: voce.richiesto || "",
+  });
+  return { ok: false, inviato: false, spostato: false, errore: motivo, motivo };
+}
+
+async function avvisaApplicazione(avviso) {
+  try {
+    await fetch(`${URL_APP}/api/avvisi`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(avviso),
+      signal: AbortSignal.timeout(1500),
+    });
+  } catch {
+    // L'avviso resta sulla sincronia anche se l'applicazione non risponde.
+  }
+}
+
+async function registraTicketInviato(archivio, voce, soggetto, id) {
+  const richiesto = operatoreScelto(voce, soggetto);
+  const scelto = await risolviOperatoreScelto(richiesto);
+  if (!scelto.logon) {
+    return rifiutaAssegnazione(archivio, { id, codice: soggetto.codice, titolo: soggetto.titolo, motivo: scelto.motivo, richiesto });
+  }
+  const logon = scelto.logon;
   const nomeCliente = soggetto.cliente || soggetto.clienteNome || soggetto.nomeCliente || "";
-  let logon = await logonOperatore(soggetto.logonTecnico || soggetto.tecnico || soggetto.operatore || "");
-  if (!logon) logon = await logonDalCliente(nomeCliente);
-  if (!logon) return { ok: false, errore: "Manca l'operatore." };
   const codice = String(soggetto.codice ?? "").trim() || id;
   const titolo = String(soggetto.titolo ?? "").trim() || codice;
   const clienteId = await clienteIdDalNome(nomeCliente);
+  const precedente = archivio.ticket[id] ? { ...archivio.ticket[id] } : null;
   const pacchetto = {
     versione: 1,
     inviato: new Date().toISOString(),
@@ -414,7 +524,34 @@ async function registraTicketInviato(archivio, soggetto, id) {
     daInviare: true,
     pacchetto,
   };
+  let accettato = false;
+  let motivoRifiuto = "";
+  try {
+    const risposta = await fetch(`${URL_APP}/api/sincronizzazione`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(pacchetto),
+      signal: AbortSignal.timeout(1500),
+    });
+    accettato = risposta.ok;
+    if (!accettato) {
+      const corpo = await risposta.json().catch(() => ({}));
+      const dettaglio = corpo.errore || "l'applicazione non ha accettato l'operatore scelto.";
+      motivoRifiuto = `Assegnazione non possibile: ${dettaglio} Il ticket non è stato spostato su un altro tecnico.`;
+    }
+  } catch {
+    motivoRifiuto = "Assegnazione non possibile: l'applicazione non è raggiungibile. Il ticket non è stato spostato su un altro tecnico.";
+  }
+  if (!accettato) {
+    if (precedente) archivio.ticket[id] = precedente;
+    else delete archivio.ticket[id];
+    return rifiutaAssegnazione(archivio, { id, codice, titolo, motivo: motivoRifiuto, richiesto });
+  }
+  archivio.ticket[id].inoltrato = true;
+  archivio.rifiuti = (archivio.rifiuti ?? []).filter((rifiuto) => rifiuto.id !== id);
+  togliId(archivio, id);
   await salva(archivio);
+  await avvisaApplicazione({ id, risolto: true });
   await pianifica(archivio, {
     tipo: "tablet",
     immediata: true,
@@ -422,20 +559,8 @@ async function registraTicketInviato(archivio, soggetto, id) {
     voce: { id, titolo, codice, stato: "aperto", segnalazioneImmediata: false, genere: "ticket" },
     titolo,
   });
-  await pianifica(archivio, { tipo: "applicazione", immediata: false, pacchetto, titolo });
   if (archivio.modalita === "automatica") await verificaSara();
   return { ok: true, inviato: true, stato: "inviato", id, codice, logon, titolo };
-}
-
-async function logonDalCliente(nome) {
-  const pulito = nomeClientePulito(nome);
-  if (!pulito) return "";
-  const remoto = await leggiApplicazione();
-  const cliente = (remoto?.clienti ?? []).find((voce) => {
-    const suo = nomeClientePulito(voce.nome);
-    return suo === pulito || pulito.startsWith(suo) || suo.startsWith(pulito);
-  });
-  return cliente?.logonTecnico || "";
 }
 
 async function clienteIdDalNome(nome) {
@@ -450,14 +575,14 @@ async function clienteIdDalNome(nome) {
 }
 
 async function riceviDallApplicazione(archivio, voce) {
-  const soggetto = soggettoIngresso(voce);
+  const soggetto = arricchisciSoggetto(soggettoIngresso(voce));
   const id = String(soggetto.id || soggetto.codice || "").trim();
   if (!id) return { ok: false, errore: "Manca il soggetto." };
   if (sembraIntervento(soggetto)) {
-    return registraInterventoAssegnato(archivio, soggetto, id);
+    return registraInterventoAssegnato(archivio, voce, soggetto, id);
   }
   if (eDaInviare(soggetto)) {
-    return registraTicketInviato(archivio, soggetto, id);
+    return registraTicketInviato(archivio, voce, soggetto, id);
   }
   if (voce.evento === "assegnazione" && soggetto.precedente) {
     return riassegna(archivio, {
@@ -956,7 +1081,7 @@ function assicurati(archivio) {
   archivio.ticket = archivio.ticket && !Array.isArray(archivio.ticket) ? archivio.ticket : {};
   archivio.interventi = archivio.interventi && !Array.isArray(archivio.interventi) ? archivio.interventi : {};
   archivio.tablet = archivio.tablet && !Array.isArray(archivio.tablet) ? archivio.tablet : {};
-  for (const chiave of ["pending", "attese", "riassegnazioni", "trasferimenti", "dialogo"]) {
+  for (const chiave of ["pending", "attese", "riassegnazioni", "trasferimenti", "dialogo", "rifiuti"]) {
     if (!Array.isArray(archivio[chiave])) archivio[chiave] = [];
   }
   return archivio;
@@ -1063,6 +1188,7 @@ function pagina(archivio) {
     details.pannello[open] > summary .suggerimento { display: none; }
     .meta { color: #5c6770; }
     .ok { color: #1f7a4d; font-weight: 700; }
+    .rifiuto { background: #fff4e8; border: 1px solid #e8c4a2; }
     button { font: inherit; background: #243044; color: white; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
     form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0; }
     input, select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #d5cec3; }
@@ -1093,6 +1219,7 @@ function pagina(archivio) {
       </form>
       ${attese || "<p class=\"meta\">Nessun trasferimento in attesa.</p>"}
     </section>
+    ${(archivio.rifiuti ?? []).length ? `<section class="rifiuto"><h2>Assegnazione non possibile</h2><ul>${archivio.rifiuti.map((voce) => `<li><strong>${escape(voce.codice || voce.titolo || voce.id)}</strong>: ${escape(voce.motivo)}</li>`).join("")}</ul></section>` : ""}
     <details class="pannello">
       <summary>
         <h2>Tablet <span class="nuovo">Nuovo</span></h2>

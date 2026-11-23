@@ -99,6 +99,20 @@ const server = createServer(async (richiesta, risposta) => {
       return json(risposta, 200, pacchettoTicketEseguiti(archivio, tecnico.logon));
     }
 
+    if (richiesta.method === "POST" && url.pathname === "/api/avvisi") {
+      const corpo = await leggiCorpo(richiesta);
+      let campi;
+      try {
+        campi = JSON.parse(corpo || "{}");
+      } catch {
+        return json(risposta, 400, { errore: "Il corpo non è un JSON valido." });
+      }
+      const archivio = await carica();
+      registraAvviso(archivio, campi);
+      await salva(archivio);
+      return json(risposta, 200, { messaggio: "Avviso registrato.", avvisi: archivio.avvisiAssegnazione });
+    }
+
     if (richiesta.method === "POST" && url.pathname === "/api/sincronizzazione") {
       const corpo = await leggiCorpo(richiesta);
       let pacchetto;
@@ -230,13 +244,17 @@ function pacchettoAssegnazioni(archivio, logon) {
     clienti: (archivio.clienti ?? []).filter((voce) => clientiId.has(voce.id)),
     interventi,
     ticket,
+    avvisi: (archivio.avvisiAssegnazione ?? [])
+      .filter((voce) => !voce.logon || voce.logon === logon)
+      .map((voce) => voce.motivo)
+      .filter(Boolean),
   };
 }
 
 function applicaSincronizzazione(archivio, pacchetto) {
   const riferimento = pacchetto?.tecnico ?? {};
   const tecnico = tecnicoDi(archivio, riferimento.logon || riferimento.id);
-  if (!tecnico) return { codice: 404, errore: "Tecnico sconosciuto." };
+  if (!tecnico) return { codice: 404, errore: "l'operatore scelto non è tra i tecnici dell'applicazione." };
   if (!Array.isArray(pacchetto.interventi) || !Array.isArray(pacchetto.ticket)) {
     return { codice: 400, errore: "Servono gli elenchi interventi e ticket." };
   }
@@ -272,10 +290,24 @@ function applicaSincronizzazione(archivio, pacchetto) {
   for (const aggiornamento of pacchetto.ticket) {
     const id = String(aggiornamento?.id || aggiornamento?.codice || "").trim();
     if (!id) continue;
-    let record = archivio.ticket.find((voce) => (voce.id === id || voce.codice === id) && stessoOperatore(archivio, voce.logonTecnico, tecnico.logon));
+    const assegnazione = aggiornamento.daInviare === true || aggiornamento.verso === "tablet";
+    let record = archivio.ticket.find((voce) => (voce.id === id || voce.codice === id || (aggiornamento.codice && voce.codice === aggiornamento.codice)) && stessoOperatore(archivio, voce.logonTecnico, tecnico.logon));
+    if (!record && assegnazione) {
+      record = archivio.ticket.find((voce) => voce.id === id || voce.codice === id || (aggiornamento.codice && voce.codice === aggiornamento.codice));
+    }
     if (!record) {
       record = ticketArrivato(archivio, tecnico, aggiornamento, id);
       archivio.ticket.unshift(record);
+    } else if (assegnazione) {
+      record.logonTecnico = tecnico.logon;
+      record.daInviare = true;
+      delete record.ricevutoIl;
+      delete record.inviatoIl;
+      if (String(aggiornamento.titolo ?? "").trim()) record.titolo = String(aggiornamento.titolo).trim();
+      if (String(aggiornamento.codice ?? "").trim()) record.codice = String(aggiornamento.codice).trim();
+      const perNome = clientePerNome(archivio, aggiornamento.cliente || aggiornamento.clienteNome);
+      if (perNome) record.clienteId = perNome.id;
+      record.stato = STATI_TICKET.has(aggiornamento.stato) ? aggiornamento.stato : (record.stato || "aperto");
     } else {
       const partitoDalServer = record.daInviare === true || Boolean(record.inviatoIl);
       if (STATI_TICKET.has(aggiornamento.stato)) record.stato = aggiornamento.stato;
@@ -476,6 +508,27 @@ function ticketArrivato(archivio, tecnico, aggiornamento, id) {
   return record;
 }
 
+function registraAvviso(archivio, campi) {
+  archivio.avvisiAssegnazione = Array.isArray(archivio.avvisiAssegnazione) ? archivio.avvisiAssegnazione : [];
+  const id = String(campi?.id ?? "").trim();
+  if (campi?.risolto === true) {
+    archivio.avvisiAssegnazione = archivio.avvisiAssegnazione.filter((voce) => voce.id !== id);
+    return;
+  }
+  const motivo = String(campi?.motivo ?? "").trim();
+  if (!motivo) return;
+  archivio.avvisiAssegnazione = archivio.avvisiAssegnazione.filter((voce) => voce.id !== id);
+  archivio.avvisiAssegnazione.unshift({
+    id,
+    codice: String(campi.codice ?? "").trim(),
+    titolo: String(campi.titolo ?? "").trim(),
+    motivo,
+    logon: normalizza(campi.logon || ""),
+    quando: new Date().toISOString(),
+  });
+  archivio.avvisiAssegnazione = archivio.avvisiAssegnazione.slice(0, 20);
+}
+
 function clienteDellOperatore(archivio, logon) {
   const esistente = (archivio.clienti ?? []).find((voce) => voce.logonTecnico === logon);
   if (esistente) return esistente;
@@ -633,6 +686,7 @@ function assicurati(archivio) {
       ],
     }];
   }
+  if (!Array.isArray(archivio.avvisiAssegnazione)) archivio.avvisiAssegnazione = [];
   for (const chiave of ["inviiSincronia", "atteseConferma", "codaAssegnazioni", "dialogoAda", "riassegnazioni", "ingressoSincronia"]) {
     if (!Array.isArray(archivio[chiave])) archivio[chiave] = [];
   }
@@ -684,6 +738,7 @@ async function gestisciSara(richiesta, risposta, url) {
       pending: archivio.pending ?? [],
       tecnici: (archivio.tecnici ?? []).map((tecnico) => ({ logon: tecnico.logon, nome: tecnico.nome })),
       clienti: (archivio.clienti ?? []).map((cliente) => ({ id: cliente.id, nome: cliente.nome, logonTecnico: cliente.logonTecnico || "" })),
+      avvisi: archivio.avvisiAssegnazione ?? [],
     }), true;
   }
   if (richiesta.method !== "POST") return false;
@@ -1049,6 +1104,10 @@ function pagina(archivio, scelta) {
   const aggiornamenti = (archivio.aggiornamenti ?? []).map((voce) => {
     return `<li><strong>${escape(voce.nome || voce.logon)}</strong> · ${escape(dataLeggibile(voce.inviato))} · ${voce.interventi} interventi · ${voce.ticket} ticket</li>`;
   }).join("");
+  const rifiuti = (archivio.avvisiAssegnazione ?? []).filter((voce) => !voce.logon || voce.logon === logon);
+  const avvisoRifiuto = rifiuti.length
+    ? `<div class="rifiuto"><h2>Assegnazione non possibile</h2><ul>${rifiuti.map((voce) => `<li><strong>${escape(voce.codice || voce.titolo || voce.id)}</strong>: ${escape(voce.motivo)}</li>`).join("")}</ul></div>`
+    : "";
   const avviso = scelta.creato
     ? `<p class="avviso">Ticket di prova creato per ${escape(operatore?.nome ?? "l'operatore")} e messo in Ticket da inviare.</p>`
     : scelta.eseguito
@@ -1086,6 +1145,8 @@ function pagina(archivio, scelta) {
     nav.schede a { text-decoration: none; padding: 10px 16px; border-radius: 999px; background: #efeae2; color: #1c2430; }
     nav.schede a.attiva { background: #0e4d5d; color: white; }
     .avviso { background: #e5f4f1; border-radius: 12px; padding: 12px 14px; }
+    .rifiuto { background: #fff4e8; border: 1px solid #e8c4a2; border-radius: 12px; padding: 12px 14px; margin: 0 0 16px; }
+    .rifiuto h2 { font-size: 1.05rem; }
     .nuovo { display: inline-block; margin-left: 8px; background: #b45309; color: white; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; vertical-align: middle; }
     .urgente { color: #9a3412; font-weight: 700; }
     .ok { color: #1f7a4d; font-weight: 700; }
@@ -1123,6 +1184,7 @@ function pagina(archivio, scelta) {
         <input type="hidden" name="scheda" value="${scheda}">
         <button type="submit">Mostra</button>
       </form>
+      ${avvisoRifiuto}
       ${avviso}
       <nav class="schede">
         <a class="${scheda === "da-inviare" ? "attiva" : ""}" href="${href("da-inviare")}">Ticket da inviare (${daInviare.length})</a>
