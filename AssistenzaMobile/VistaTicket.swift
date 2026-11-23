@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum FiltroTicket: String, CaseIterable, Identifiable {
+    case attivi
     case tutti
     case aperti
     case inLavorazione
@@ -13,6 +14,7 @@ enum FiltroTicket: String, CaseIterable, Identifiable {
 
     var titolo: String {
         switch self {
+        case .attivi: return "Attivi"
         case .tutti: return "Tutti"
         case .aperti: return "Aperti"
         case .inLavorazione: return "In lavorazione"
@@ -23,15 +25,24 @@ enum FiltroTicket: String, CaseIterable, Identifiable {
         }
     }
 
-    var stato: StatoTicket? {
+    func include(_ stato: StatoTicket) -> Bool {
         switch self {
-        case .tutti: return nil
-        case .aperti: return .aperto
-        case .inLavorazione: return .inLavorazione
-        case .inAttesa: return .inAttesaCliente
-        case .risolti: return .risolto
-        case .chiusi: return .chiuso
-        case .eseguiti: return nil
+        case .attivi:
+            return stato != .risolto && stato != .chiuso
+        case .tutti:
+            return true
+        case .aperti:
+            return stato == .aperto
+        case .inLavorazione:
+            return stato == .inLavorazione
+        case .inAttesa:
+            return stato == .inAttesaCliente
+        case .risolti:
+            return stato == .risolto
+        case .chiusi:
+            return stato == .chiuso
+        case .eseguiti:
+            return stato == .risolto || stato == .chiuso
         }
     }
 }
@@ -41,7 +52,7 @@ struct VistaTicket: View {
     @Environment(SessioneTecnico.self) private var sessione
     @Binding var selezione: String?
     @State private var query = ""
-    @State private var filtro: FiltroTicket = .tutti
+    @State private var filtro: FiltroTicket = .attivi
     @State private var nuovo = false
 
     private var tecnicoID: String? { sessione.tecnicoID }
@@ -55,8 +66,7 @@ struct VistaTicket: View {
         let ago = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return assegnati
             .filter { ticket in
-                let statoOk = filtro == .eseguiti ? ticket.stato.chiuso : (filtro.stato == nil || ticket.stato == filtro.stato)
-                return statoOk && corrisponde(ticket, ago: ago)
+                filtro.include(ticket.stato) && corrisponde(ticket, ago: ago)
             }
             .sorted { lhs, rhs in
                 let urgenteLhs = archivio.scheda(ticketID: lhs.id).urgente
@@ -85,7 +95,7 @@ struct VistaTicket: View {
                         }
                 }
             } footer: {
-                Text("Solo i ticket del tuo logon. Scarica eseguiti prende dal server quelli risolti o chiusi.")
+                Text("Solo i ticket del tuo logon. Chiusi e risolti restano nascosti: sceglili nel filtro Stato. Scarica eseguiti li prende dal server.")
             }
         }
         .listStyle(.inset)
@@ -95,9 +105,7 @@ struct VistaTicket: View {
             if filtrati.isEmpty {
                 SezioneVuota(
                     titolo: assegnati.isEmpty ? "Nessun ticket assegnato" : "Nessun risultato",
-                    dettaglio: assegnati.isEmpty
-                        ? "Apri un ticket oppure importalo con l'elenco."
-                        : "Prova un altro stato o un'altra ricerca.",
+                    dettaglio: dettaglioVuoto,
                     simbolo: "text.bubble"
                 )
             }
@@ -143,12 +151,19 @@ struct VistaTicket: View {
         }
         .sheet(isPresented: $nuovo) {
             EditorTicket(esistente: nil) { id in
-                filtro = .tutti
+                if let ticket = archivio.ticketRegistrato(id: id), ticket.stato.chiuso {
+                    filtro = ticket.stato == .chiuso ? .chiusi : .risolti
+                } else {
+                    filtro = .attivi
+                }
                 query = ""
                 selezione = id
             }
         }
-        .onAppear(perform: allineaSelezione)
+        .onAppear {
+            mostraSelezioneSeChiusa()
+            allineaSelezione()
+        }
         .onChange(of: filtrati.map(\.id)) { _, _ in
             allineaSelezione()
         }
@@ -205,6 +220,23 @@ struct VistaTicket: View {
         return campi.contains {
             $0.range(of: ago, options: [.caseInsensitive, .diacriticInsensitive]) != nil
         }
+    }
+
+    private var dettaglioVuoto: String {
+        if assegnati.isEmpty {
+            return "Apri un ticket oppure importalo con l'elenco."
+        }
+        if filtro == .attivi && assegnati.contains(where: { $0.stato.chiuso }) {
+            return "Chiusi e risolti sono nascosti. Sceglili nel filtro Stato, in alto."
+        }
+        return "Prova un altro stato o un'altra ricerca."
+    }
+
+    private func mostraSelezioneSeChiusa() {
+        guard let selezione,
+              let ticket = assegnati.first(where: { $0.id == selezione }),
+              ticket.stato.chiuso else { return }
+        filtro = ticket.stato == .chiuso ? .chiusi : .risolti
     }
 
     private func allineaSelezione() {
