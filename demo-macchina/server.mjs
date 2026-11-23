@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PORTA = Number(process.env.PORTA_MACCHINA || 3022);
+const PORTA = Number(process.env.PORTA_MACCHINA || 3023);
 const HOST = "127.0.0.1";
 const RADICE = dirname(fileURLToPath(import.meta.url));
 const PERCORSO_MACCHINA = process.env.MACCHINA || join(RADICE, "macchine", "lavatrice-lavanderia.json");

@@ -76,17 +76,17 @@ Dalla cartella del repository. Su macOS è `~/Documents/Sviluppo`.
 ./spegni-demo.sh
 ```
 
-Il primo avvia in background l'assistenza sulla porta 3020, la sincronia sulla 3021 e la macchina sulla 3022. Il secondo le ferma. Serve `node` nel PATH. I log restano in `.demo/`.
+Il primo avvia in background l'assistenza sulla porta 3021, la sincronia sulla 3022 e la macchina sulla 3023. Il secondo le ferma. Serve `node` nel PATH. I log restano in `.demo/`.
 
 ## Pannello demo
 
-Pagina a parte, porta **3011**.
+Pagina a parte, porta **3020**.
 
 ```bash
 node pannello-demo/server.mjs
 ```
 
-Apri http://127.0.0.1:3011/. **Avvia le demo** e **Spegni le demo** accendono e fermano assistenza (3020), sincronia (3021) e macchina (3022). Accanto ai pulsanti, lo stato di ciascuna è «accesa» o «spenta» e si aggiorna da solo.
+Apri http://127.0.0.1:3020/. **Avvia le demo** e **Spegni le demo** accendono e fermano assistenza (3021), sincronia (3022) e macchina (3023). Accanto ai pulsanti, lo stato di ciascuna è «accesa» o «spenta» e si aggiorna da solo.
 
 ## Demo Assistenza Tecnica
 
@@ -96,7 +96,7 @@ Il server è in `demo-assistenza/`. I dati restano nel file locale `demo-assiste
 node demo-assistenza/server.mjs
 ```
 
-Poi apri http://127.0.0.1:3020/. In cima, sopra la scelta dell'operatore, ci sono due comandi affiancati: **Simula un ticket e invialo** e, in verde con il segno di spunta, **Completa un ticket di prova**. Poi scegli l'operatore, per esempio Marco Bianchi. **Ticket da inviare** elenca solo i ticket ancora da mandare alla sua app. **Ticket ricevuti** elenca solo quelli arrivati dalla sua app. Completa un ticket di prova lo segna come eseguito per l'operatore selezionato.
+Poi apri http://127.0.0.1:3021/. In cima, sopra la scelta dell'operatore, ci sono due comandi affiancati: **Simula un ticket e invialo** e, in verde con il segno di spunta, **Completa un ticket di prova**. Poi scegli l'operatore, per esempio Marco Bianchi. **Ticket da inviare** elenca solo i ticket ancora da mandare alla sua app. **Ticket ricevuti** elenca solo quelli arrivati dalla sua app. Completa un ticket di prova lo segna come eseguito per l'operatore selezionato.
 
 Sull'iPad, in **Ticket**, premi **Scarica eseguiti**: arrivano solo i ticket risolti o chiusi di chi ha fatto l'accesso.
 
@@ -112,31 +112,31 @@ Se il server è spento, l'app iPad continua a funzionare con l'archivio sul disp
 
 ## Macchina simulata
 
-Servizio a parte, porta **3022**. Il tipo di macchina è il file `demo-macchina/macchine/lavatrice-lavanderia.json` (lavatrice di lavanderia industriale). I parametri di funzionamento e di consumo cambiano in continuo. I comandi generano i ticket e li inviano alla sincronia, porta 3021.
+Servizio a parte, porta **3023**. Il tipo di macchina è il file `demo-macchina/macchine/lavatrice-lavanderia.json` (lavatrice di lavanderia industriale). I parametri di funzionamento e di consumo cambiano in continuo. I comandi generano i ticket e li inviano alla sincronia, porta 3022.
 
 ```bash
 node demo-macchina/server.mjs
 ```
 
-Poi apri http://127.0.0.1:3022/. Le parti nuove sono segnate con **Nuovo**.
+Poi apri http://127.0.0.1:3023/. Le parti nuove sono segnate con **Nuovo**.
 
 Sulla demo, in **Manutenzione predittiva**, i ticket della macchina mostrano origine e anomalia rispetto al piano. Un ticket nuovo o assegnato parte verso la sincronia: subito in modalità automatica, dopo **Conferma invio** in modalità manuale. Lo stato critico è «ticket in gestione urgente». La label «sincronizzato correttamente» la scrive Sara, quando il suo report coincide.
 
 ## Sincronia
 
-Porta **3021**. Va avviata con la demo già accesa.
+Porta **3022**. Va avviata con la demo già accesa.
 
 ```bash
 node demo-sincronia/server.mjs
 ```
 
-Poi apri http://127.0.0.1:3021/. La macchina parla solo con questa porta. La sincronia inoltra ogni ticket all'applicazione e, se la tipologia è critica, lo segnala sul tablet del tecnico. In automatico il trasferimento parte da solo. In manuale parte da **Conferma**. Sara pubblica il report per operatore e, se tablet e applicazione non coincidono, ritrasferisce lei: il suo stato fa fede. Un cambio tecnico toglie l'intervento dal primo tablet e lo mette sul secondo. Se l'intervento era già in corso, torna in pending con la causale e rientra sull'applicazione. Le parti nuove sono segnate con **Nuovo**.
+Poi apri http://127.0.0.1:3022/. La macchina parla solo con questa porta. La sincronia inoltra ogni ticket all'applicazione e, se la tipologia è critica, lo segnala sul tablet del tecnico. In automatico il trasferimento parte da solo. In manuale parte da **Conferma**. Sara pubblica il report per operatore e, se tablet e applicazione non coincidono, ritrasferisce lei: il suo stato fa fede. Un cambio tecnico toglie l'intervento dal primo tablet e lo mette sul secondo. Se l'intervento era già in corso, torna in pending con la causale e rientra sull'applicazione. Le parti nuove sono segnate con **Nuovo**.
 
 ## iPad, manutenzione predittiva
 
 Con demo, sincronia e macchina accese, apri l'app in landscape ed entra come `marco.bianchi`. In **Sincronizzazione** premi **Sincronizza con la demo**.
 
-Sulla macchina premi **Rischio di blocco**, poi sincronizza di nuovo l'iPad. Compare l'avviso **Ticket in gestione urgente**: il ticket è in cima, con il contrassegno **Nuovo**. Nel dettaglio ci sono il manuale e il workflow. **Ho fatto questo passo** avanza un passo alla volta. **Chiuso** e **Risolto** restano bloccati fino all'ultimo passo. Poi chiudi il ticket e sincronizza: la chiusura va alla sincronia sulla porta 3021 e sull'applicazione compare **sincronizzato correttamente**.
+Sulla macchina premi **Rischio di blocco**, poi sincronizza di nuovo l'iPad. Compare l'avviso **Ticket in gestione urgente**: il ticket è in cima, con il contrassegno **Nuovo**. Nel dettaglio ci sono il manuale e il workflow. **Ho fatto questo passo** avanza un passo alla volta. **Chiuso** e **Risolto** restano bloccati fino all'ultimo passo. Poi chiudi il ticket e sincronizza: la chiusura va alla sincronia sulla porta 3022 e sull'applicazione compare **sincronizzato correttamente**.
 
 **Metti in pending** sceglie la tipologia, sul ticket o sull'intervento, e la manda alla sincronia con la causale. Un intervento riassegnato sulla demo sparisce dall'iPad del tecnico precedente alla sincronizzazione successiva e compare su quello del nuovo tecnico.
 

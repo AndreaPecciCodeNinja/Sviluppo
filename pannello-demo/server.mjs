@@ -4,14 +4,14 @@ import { createConnection } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PORTA = Number(process.env.PORTA_PANNELLO || 3011);
+const PORTA = Number(process.env.PORTA_PANNELLO || 3020);
 const HOST = "127.0.0.1";
 const RADICE = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const SERVIZI = [
-  { id: "assistenza", nome: "Assistenza", porta: 3020 },
-  { id: "sincronia", nome: "Sincronia", porta: 3021 },
-  { id: "macchina", nome: "Macchina", porta: 3022 },
+  { id: "assistenza", nome: "Assistenza", porta: 3021 },
+  { id: "sincronia", nome: "Sincronia", porta: 3022 },
+  { id: "macchina", nome: "Macchina", porta: 3023 },
 ];
 
 let comandoInCorso = null;

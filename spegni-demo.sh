@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ferma assistenza (3020), sincronia (3021) e macchina (3022).
+# Ferma assistenza (3021), sincronia (3022) e macchina (3023).
 # Da macOS, nella cartella del repository: ./spegni-demo.sh
 
 set -u
@@ -57,6 +57,6 @@ $pid_file"
   echo "$nome ($porta) fermata."
 }
 
-ferma "macchina" 3022
-ferma "sincronia" 3021
-ferma "assistenza" 3020
+ferma "macchina" 3023
+ferma "sincronia" 3022
+ferma "assistenza" 3021

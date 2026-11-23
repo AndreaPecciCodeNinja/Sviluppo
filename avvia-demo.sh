@@ -1,5 +1,5 @@
 #!/bin/bash
-# Avvia assistenza (3020), sincronia (3021) e macchina (3022) in background.
+# Avvia assistenza (3021), sincronia (3022) e macchina (3023) in background.
 # Da macOS, nella cartella del repository: ./avvia-demo.sh
 
 set -u
@@ -57,7 +57,7 @@ avvia() {
 }
 
 cd "$ROOT"
-avvia "assistenza" 3020 "demo-assistenza/server.mjs" || exit 1
-avvia "sincronia" 3021 "demo-sincronia/server.mjs" || exit 1
-avvia "macchina" 3022 "demo-macchina/server.mjs" || exit 1
+avvia "assistenza" 3021 "demo-assistenza/server.mjs" || exit 1
+avvia "sincronia" 3022 "demo-sincronia/server.mjs" || exit 1
+avvia "macchina" 3023 "demo-macchina/server.mjs" || exit 1
 echo "Demo avviata. Per fermarla: ./spegni-demo.sh"

@@ -5,7 +5,7 @@
   "tipoEtichetta": "Lavatrice di lavanderia industriale",
   "logonTecnico": "marco.bianchi",
   "clienteId": "",
-  "sincronia": "http://127.0.0.1:3021/api/sincronizzazione",
+  "sincronia": "http://127.0.0.1:3022/api/sincronizzazione",
   "intervalloMs": 2000,
   "parametri": [
     {

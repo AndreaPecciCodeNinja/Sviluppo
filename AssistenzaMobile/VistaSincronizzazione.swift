@@ -19,12 +19,12 @@ struct VistaSincronizzazione: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Server")
                         .font(.subheadline.weight(.semibold))
-                    TextField("http://127.0.0.1:3020", text: $url)
+                    TextField("http://127.0.0.1:3021", text: $url)
                         .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
-                    Text("Predefinito: \(ClienteServer.urlPredefinito). È l'origine della demo Assistenza Tecnica Demo, porta 3020. I ticket chiusi tornano alla sincronia sulla porta 3021.")
+                    Text("Predefinito: \(ClienteServer.urlPredefinito). È l'origine della demo Assistenza Tecnica Demo, porta 3021. I ticket chiusi tornano alla sincronia sulla porta 3022.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -95,7 +95,7 @@ struct GuidaSincronizzazione: View {
                     .font(.headline)
                 ContrassegnoNuovo()
             }
-            Text("POST http://127.0.0.1:3021/api/tablet/{logon}/chiusura")
+            Text("POST http://127.0.0.1:3022/api/tablet/{logon}/chiusura")
                 .font(.body.monospaced())
                 .textSelection(.enabled)
             Text("Un ticket risolto o chiuso, e un intervento completato, partono verso la sincronia. Sara verifica il passaggio e sull'applicazione compare «sincronizzato correttamente». Un intervento riassegnato sparisce da questo iPad e compare su quello del nuovo tecnico.")
