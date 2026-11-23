@@ -166,7 +166,7 @@ function tecnicoDi(archivio, logonOId) {
 function pacchettoAssegnazioni(archivio, logon) {
   const tecnico = (archivio.tecnici ?? []).find((voce) => voce.logon === logon);
   const interventi = (archivio.interventi ?? []).filter((voce) => voce.logonTecnico === logon);
-  const ticket = (archivio.ticket ?? []).filter((voce) => voce.logonTecnico === logon).map(ticketPerApp);
+  const ticket = (archivio.ticket ?? []).filter((voce) => voce.logonTecnico === logon).map((voce) => ticketPerTecnico(archivio, voce));
   const clientiId = new Set([
     ...(archivio.clienti ?? []).filter((voce) => voce.logonTecnico === logon).map((voce) => voce.id),
     ...interventi.map((voce) => voce.clienteId),
@@ -288,7 +288,7 @@ function ticketEseguito(ticket) {
 
 function pacchettoTicketEseguiti(archivio, logon) {
   const tecnico = (archivio.tecnici ?? []).find((voce) => voce.logon === logon);
-  const ticket = (archivio.ticket ?? []).filter((voce) => voce.logonTecnico === logon && ticketEseguito(voce)).map(ticketPerApp);
+  const ticket = (archivio.ticket ?? []).filter((voce) => voce.logonTecnico === logon && ticketEseguito(voce)).map((voce) => ticketPerTecnico(archivio, voce));
   const clientiId = new Set(ticket.map((voce) => voce.clienteId));
   return {
     tecnici: tecnico
@@ -417,6 +417,22 @@ function ticketPerApp(ticket) {
   for (const campo of CAMPI_MACCHINA) {
     if (ticket[campo] !== undefined) pubblico[campo] = ticket[campo];
   }
+  return pubblico;
+}
+
+function ticketPerTecnico(archivio, ticket) {
+  const pubblico = ticketPerApp(ticket);
+  if (ticket.statoGestione) pubblico.statoGestione = ticket.statoGestione;
+  if (ticket.segnalazioneImmediata) pubblico.segnalazioneImmediata = true;
+  if (ticket.etichettaSincronia) pubblico.etichettaSincronia = ticket.etichettaSincronia;
+  const manuale = (archivio.manuali ?? []).find((voce) => voce.id === ticket.manualeId)
+    || (archivio.manuali ?? []).find((voce) => voce.tipoMacchina && voce.tipoMacchina === ticket.tipoMacchina);
+  if (manuale) {
+    pubblico.manualeTitolo = manuale.titolo;
+    pubblico.manualeTesto = manuale.testo;
+  }
+  const flusso = (archivio.workflow ?? []).find((voce) => voce.tipoMacchina === ticket.tipoMacchina);
+  if (flusso) pubblico.workflow = flusso.passi;
   return pubblico;
 }
 

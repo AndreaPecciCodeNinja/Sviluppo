@@ -131,6 +131,22 @@ private struct ContenutoPrincipale: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
         .task { await ClienteServer.sincronizza(archivio: archivio, sessione: sessione) }
+        .alert("Ticket in gestione urgente", isPresented: Binding(
+            get: { archivio.avvisoUrgente != nil },
+            set: { if !$0 { archivio.avvisoUrgente = nil } }
+        )) {
+            Button("Apri il ticket") {
+                if let id = archivio.ticketDaAprire {
+                    apriTicket(id)
+                }
+                archivio.avvisoUrgente = nil
+            }
+            Button("Chiudi", role: .cancel) {
+                archivio.avvisoUrgente = nil
+            }
+        } message: {
+            Text(archivio.avvisoUrgente ?? "")
+        }
         .onChange(of: faseScena) { _, fase in
             guard fase == .active else { return }
             Task { await ClienteServer.sincronizza(archivio: archivio, sessione: sessione) }

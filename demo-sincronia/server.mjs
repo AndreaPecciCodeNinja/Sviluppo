@@ -296,6 +296,12 @@ async function chiudiDalTablet(archivio, logon, campi) {
   const genere = campi.genere === "intervento" ? "intervento" : "ticket";
   if (genere === "intervento" && archivio.interventi[id]) archivio.interventi[id].stato = stato;
   if (genere === "ticket" && archivio.ticket[id]) archivio.ticket[id].stato = stato;
+  const coda = archivio.tablet[logon];
+  if (coda) {
+    const elenco = genere === "intervento" ? coda.interventi : coda.ticket;
+    const voce = elenco.find((candidato) => candidato.id === id);
+    if (voce) voce.stato = stato;
+  }
   await salva(archivio);
   const pacchetto = {
     versione: 1,

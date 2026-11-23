@@ -62,6 +62,17 @@ enum Formato {
     }
 }
 
+struct ContrassegnoNuovo: View {
+    var body: some View {
+        Text("Nuovo")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color(red: 0.706, green: 0.325, blue: 0.035), in: Capsule())
+    }
+}
+
 struct Etichetta: View {
     var testo: String
     var colore: Color

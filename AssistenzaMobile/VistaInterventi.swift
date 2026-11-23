@@ -249,6 +249,39 @@ struct DettaglioIntervento: View {
                     BloccoTesto(titolo: "Descrizione", testo: intervento.descrizione)
                 }
 
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text("Pending")
+                            .font(.headline)
+                        ContrassegnoNuovo()
+                    }
+                    if let tipologia = archivio.pendingIntervento(id: intervento.id) {
+                        Text("In pending: \(tipologia)")
+                            .font(.subheadline)
+                    } else {
+                        Text("Se non puoi proseguire, scegli perché. La causale torna alla sincronia.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Menu {
+                        ForEach(TipologiaPending.allCases) { tipologia in
+                            Button(tipologia.titolo) {
+                                archivio.mettiInterventoInPending(id: intervento.id, tecnicoID: tecnicoID, tipologia: tipologia)
+                                Task {
+                                    await ClienteServer.inviaPending(
+                                        riferimento: intervento.id,
+                                        tipologia: tipologia,
+                                        nota: intervento.titolo,
+                                        archivio: archivio
+                                    )
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Metti in pending", systemImage: "pause.circle")
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Esecuzione")
                         .font(.headline)

@@ -517,6 +517,9 @@ enum ImportatoreJSON {
             aperto: aperto,
             aggiornato: esistente?.aggiornato ?? .now
         )
+        if archivio.unisciScheda(ticketID: id, scheda: schedaMacchina(dizionario)) {
+            mutato = true
+        }
         if let esistente, record == esistente {
             return mutato
         }
@@ -635,6 +638,40 @@ private func valore(_ dizionario: [String: Any], chiavi: [String]) -> Any? {
         }
     }
     return nil
+}
+
+private func schedaMacchina(_ dizionario: [String: Any]) -> SchedaManutenzione {
+    var scheda = SchedaManutenzione()
+    scheda.origine = testo(dizionario, "origine") ?? ""
+    scheda.tipologia = testo(dizionario, "tipologia") ?? ""
+    scheda.macchina = testo(dizionario, "macchina") ?? ""
+    scheda.tipoMacchina = testo(dizionario, "tipoMacchina", "tipo_macchina") ?? ""
+    scheda.statoGestione = testo(dizionario, "statoGestione", "stato_gestione") ?? ""
+    scheda.manualeTitolo = testo(dizionario, "manualeTitolo", "manuale") ?? ""
+    scheda.manualeTesto = testo(dizionario, "manualeTesto") ?? ""
+    scheda.segnalazioneImmediata = vero(dizionario, "segnalazioneImmediata", "segnalazione_immediata")
+        || scheda.statoGestione == "ticket in gestione urgente"
+    scheda.anomaliaRispettoAlPiano = vero(dizionario, "anomaliaRispettoAlPiano", "anomalia_rispetto_al_piano")
+    if let passi = valore(dizionario, chiavi: ["workflow", "passi"]) as? [Any] {
+        scheda.workflow = passi.compactMap { elemento in
+            if let testo = elemento as? String {
+                let pulito = testo.trimmingCharacters(in: .whitespacesAndNewlines)
+                return pulito.isEmpty ? nil : pulito
+            }
+            return nil
+        }
+    }
+    return scheda
+}
+
+private func vero(_ dizionario: [String: Any], _ chiavi: String...) -> Bool {
+    guard let grezzo = valore(dizionario, chiavi: chiavi) else { return false }
+    if let flag = grezzo as? Bool { return flag }
+    if let numero = grezzo as? NSNumber { return numero.intValue != 0 }
+    if let testo = grezzo as? String {
+        return ["true", "si", "sì", "1"].contains(testo.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+    return false
 }
 
 private func testo(_ dizionario: [String: Any], _ chiavi: String...) -> String? {

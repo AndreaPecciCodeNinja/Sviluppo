@@ -59,6 +59,9 @@ struct VistaTicket: View {
                 return statoOk && corrisponde(ticket, ago: ago)
             }
             .sorted { lhs, rhs in
+                let urgenteLhs = archivio.scheda(ticketID: lhs.id).urgente
+                let urgenteRhs = archivio.scheda(ticketID: rhs.id).urgente
+                if urgenteLhs != urgenteRhs { return urgenteLhs }
                 if lhs.stato.chiuso != rhs.stato.chiuso { return !lhs.stato.chiuso }
                 if lhs.aggiornato != rhs.aggiornato { return lhs.aggiornato > rhs.aggiornato }
                 return lhs.titolo.localizedStandardCompare(rhs.titolo) == .orderedAscending
@@ -77,6 +80,7 @@ struct VistaTicket: View {
                                     guard let tecnicoID else { return }
                                     archivio.aggiornaStatoTicket(id: ticket.id, tecnicoID: tecnicoID, stato: stato)
                                 }
+                                .disabled(stato.chiuso && !archivio.workflowCompleto(ticket.id))
                             }
                         }
                 }
@@ -166,6 +170,12 @@ struct VistaTicket: View {
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 6) {
+                if archivio.scheda(ticketID: ticket.id).urgente {
+                    HStack(spacing: 6) {
+                        ContrassegnoNuovo()
+                        Etichetta(testo: "Urgente", colore: .red)
+                    }
+                }
                 Etichetta(testo: ticket.stato.titolo, colore: Tinta.stato(ticket.stato))
                 Etichetta(testo: ticket.priorita.titolo, colore: Tinta.priorita(ticket.priorita))
             }
@@ -262,6 +272,105 @@ struct DettaglioTicket: View {
                     BloccoTesto(titolo: "Richiesta", testo: ticket.descrizione)
                 }
 
+                let scheda = archivio.scheda(ticketID: ticket.id)
+                if scheda.urgente {
+                    HStack(spacing: 8) {
+                        ContrassegnoNuovo()
+                        Text(scheda.statoGestione.isEmpty ? "Ticket in gestione urgente" : scheda.statoGestione)
+                            .font(.headline)
+                    }
+                    .foregroundStyle(.red)
+                }
+                if scheda.anomaliaRispettoAlPiano || !scheda.origine.isEmpty {
+                    Text([scheda.macchina, scheda.origine.isEmpty ? nil : "origine \(scheda.origine)", scheda.anomaliaRispettoAlPiano ? "anomalia rispetto al piano" : nil].compactMap { $0 }.joined(separator: " · "))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                if scheda.haManuale {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Text("Manuale della macchina")
+                                .font(.headline)
+                            ContrassegnoNuovo()
+                        }
+                        Text(scheda.manualeTitolo)
+                            .font(.subheadline.weight(.semibold))
+                        if !scheda.manualeTesto.isEmpty {
+                            Text(scheda.manualeTesto)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                }
+                if !scheda.workflow.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Text("Workflow di manutenzione")
+                                .font(.headline)
+                            ContrassegnoNuovo()
+                        }
+                        Text("I passi vanno seguiti nell'ordine. Il ticket si chiude solo all'ultimo.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(Array(scheda.workflow.enumerated()), id: \.offset) { indice, passo in
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: indice < scheda.passoWorkflow ? "checkmark.circle.fill" : (indice == scheda.passoWorkflow ? "circle" : "circle.dashed"))
+                                    .foregroundStyle(indice < scheda.passoWorkflow ? .green : .secondary)
+                                Text("\(indice + 1). \(passo)")
+                                    .foregroundStyle(indice == scheda.passoWorkflow ? .primary : .secondary)
+                            }
+                        }
+                        if scheda.passoWorkflow < scheda.workflow.count {
+                            Button("Ho fatto questo passo") {
+                                archivio.confermaPassoWorkflow(ticketID: ticket.id, tecnicoID: tecnicoID)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Tinta.marchio)
+                        } else {
+                            Text("Workflow completato. Ora puoi chiudere il ticket.")
+                                .font(.subheadline)
+                                .foregroundStyle(.green)
+                        }
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text("Pending")
+                            .font(.headline)
+                        ContrassegnoNuovo()
+                    }
+                    if scheda.pendingTipologia.isEmpty {
+                        Text("Se il lavoro si ferma, scegli la tipologia. La causale torna alla sincronia.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("In pending: \(scheda.pendingTipologia)")
+                            .font(.subheadline)
+                    }
+                    Menu {
+                        ForEach(TipologiaPending.allCases) { tipologia in
+                            Button(tipologia.titolo) {
+                                archivio.mettiTicketInPending(id: ticket.id, tecnicoID: tecnicoID, tipologia: tipologia)
+                                Task {
+                                    await ClienteServer.inviaPending(
+                                        riferimento: ticket.id,
+                                        tipologia: tipologia,
+                                        nota: ticket.titolo,
+                                        archivio: archivio
+                                    )
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Metti in pending", systemImage: "pause.circle")
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Risposte")
                         .font(.headline)
@@ -311,6 +420,7 @@ struct DettaglioTicket: View {
                                 Text(stato.titolo)
                             }
                         }
+                        .disabled(stato.chiuso && !archivio.workflowCompleto(ticket.id))
                     }
                 } label: {
                     Label("Cambia stato", systemImage: "arrow.triangle.2.circlepath")
@@ -335,6 +445,7 @@ struct EditorTicket: View {
     var clientePreselezionato: String?
     var onSalvato: (String) -> Void
 
+    @State private var errore = ""
     @State private var titolo: String
     @State private var descrizione: String
     @State private var clienteID: String
@@ -345,6 +456,7 @@ struct EditorTicket: View {
         self.esistente = esistente
         self.clientePreselezionato = clientePreselezionato
         self.onSalvato = onSalvato
+        _errore = State(initialValue: "")
         _titolo = State(initialValue: esistente?.titolo ?? "")
         _descrizione = State(initialValue: esistente?.descrizione ?? "")
         _clienteID = State(initialValue: esistente?.clienteID ?? clientePreselezionato ?? "")
@@ -394,6 +506,12 @@ struct EditorTicket: View {
                     TextField("Descrivi il problema", text: $descrizione, axis: .vertical)
                         .lineLimit(3...8)
                 }
+                if !errore.isEmpty {
+                    Section {
+                        Text(errore)
+                            .foregroundStyle(.red)
+                    }
+                }
             }
             .navigationTitle(esistente == nil ? "Nuovo ticket" : "Modifica ticket")
             .navigationBarTitleDisplayMode(.inline)
@@ -418,6 +536,10 @@ struct EditorTicket: View {
         guard let tecnicoID = sessione.tecnicoID else { return }
         let titoloPulito = titolo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !titoloPulito.isEmpty, !clienteID.isEmpty else { return }
+        if stato.chiuso, let id = esistente?.id, !archivio.workflowCompleto(id) {
+            errore = "Segui il workflow della macchina prima di chiudere il ticket."
+            return
+        }
         let record = Ticket(
             id: esistente?.id ?? UUID().uuidString,
             titolo: titoloPulito,

@@ -24,7 +24,7 @@ struct VistaSincronizzazione: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
-                    Text("Predefinito: \(ClienteServer.urlPredefinito). È l'origine della demo Assistenza Tecnica Demo, porta 3012.")
+                    Text("Predefinito: \(ClienteServer.urlPredefinito). È l'origine della demo Assistenza Tecnica Demo, porta 3012. I ticket chiusi tornano alla sincronia sulla porta 3013.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -87,6 +87,18 @@ struct GuidaSincronizzazione: View {
 
             voce("Invia", "POST /api/sincronizzazione")
             Text("Il corpo contiene solo il tecnico loggato: per ogni intervento id, stato, aggiornato e note; per ogni ticket id, stato, aggiornato e risposte. Le date sono ISO 8601. Non parte la password.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Text("Chiusura verso la sincronia")
+                    .font(.headline)
+                ContrassegnoNuovo()
+            }
+            Text("POST http://127.0.0.1:3013/api/tablet/{logon}/chiusura")
+                .font(.body.monospaced())
+                .textSelection(.enabled)
+            Text("Un ticket risolto o chiuso, e un intervento completato, partono verso la sincronia. Sara verifica il passaggio e sull'applicazione compare «sincronizzato correttamente». Un intervento riassegnato sparisce da questo iPad e compare su quello del nuovo tecnico.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 

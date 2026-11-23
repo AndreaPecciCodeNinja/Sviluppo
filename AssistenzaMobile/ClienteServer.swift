@@ -32,11 +32,23 @@ enum ClienteServer {
         var scaricato = false
         do {
             let dati = try await scaricaAssegnazioni(logon: tecnico.logon, origine: origine)
+            let presentiPrima = Set(archivio.ticket.map(\.id))
             let statiIntervento = Dictionary(uniqueKeysWithValues: archivio.interventi.map { ($0.id, $0.stato) })
             let statiTicket = Dictionary(uniqueKeysWithValues: archivio.ticket.map { ($0.id, $0.stato) })
             switch archivio.importa(dati: dati, nomeFile: "Assistenza Tecnica Demo", registraEsito: false) {
             case .success(let esito):
                 archivio.conservaStatoLocale(interventi: statiIntervento, ticket: statiTicket)
+                let sulTablet = await idsInterventiSulTablet(logon: tecnico.logon)
+                let tolti = archivio.rimuoviRiassegnati(
+                    tecnicoID: tecnico.id,
+                    ticketRimasti: identificativi(dati, chiave: "ticket"),
+                    interventiRimasti: identificativi(dati, chiave: "interventi"),
+                    interventiSulTablet: sulTablet
+                )
+                if tolti.interventi + tolti.ticket > 0 {
+                    pezzi.append("Tolti perché riassegnati: \(tolti.interventi) interventi e \(tolti.ticket) ticket.")
+                }
+                archivio.segnalaUrgenze(archivio.ticket.map(\.id).filter { !presentiPrima.contains($0) || archivio.scheda(ticketID: $0).urgente })
                 pezzi.append(esito.riepilogo(logonCorrente: tecnico.logon))
                 scaricato = true
             case .failure(let errore):
@@ -55,6 +67,10 @@ enum ClienteServer {
         do {
             let inviati = try await inviaAggiornamenti(tecnico: tecnico, archivio: archivio, origine: origine)
             pezzi.append("Inviati al server \(inviati.interventi) interventi e \(inviati.ticket) ticket.")
+            let chiusure = try await inviaChiusure(tecnico: tecnico, archivio: archivio)
+            if chiusure > 0 {
+                pezzi.append("Inviati alla sincronia \(chiusure) elementi chiusi.")
+            }
         } catch ErroreServer.irraggiungibile {
             pezzi.append("Il server non è raggiungibile per l'invio. I dati restano su questo iPad.")
         } catch let errore as ErroreServer {
@@ -109,6 +125,36 @@ enum ClienteServer {
         } catch {
             archivio.messaggioTicket = "Non è stato possibile scaricare i ticket eseguiti."
             return false
+        }
+    }
+
+    static func inviaPending(
+        riferimento: String,
+        tipologia: TipologiaPending,
+        nota: String,
+        archivio: ArchivioLocale
+    ) async {
+        guard let origine = origineSincronia() else {
+            archivio.messaggioTicket = "Indirizzo della sincronia non valido. Il pending resta su questo iPad."
+            return
+        }
+        guard let url = url(origine, "/api/pending") else { return }
+        let corpo: [String: String] = [
+            "tipologia": tipologia.titolo,
+            "causale": tipologia.causale,
+            "nota": nota,
+            "riferimento": riferimento,
+        ]
+        do {
+            let dati = try JSONSerialization.data(withJSONObject: corpo)
+            let (rispostaDati, http) = try await chiedi(url, metodo: "POST", corpo: dati)
+            guard (200...299).contains(http.statusCode) else {
+                archivio.messaggioTicket = messaggio(rispostaDati) ?? "La sincronia non ha accettato il pending."
+                return
+            }
+            archivio.messaggioTicket = "Pending «\(tipologia.titolo)» inviato alla sincronia."
+        } catch {
+            archivio.messaggioTicket = "Sincronia non raggiungibile. Il pending resta su questo iPad."
         }
     }
 
@@ -202,6 +248,55 @@ enum ClienteServer {
             throw ErroreServer.risposta(http.statusCode, messaggio(dati) ?? "Il server non ha accettato gli aggiornamenti.")
         }
         return (interventi.count, ticket.count)
+    }
+
+    private static func inviaChiusure(tecnico: Tecnico, archivio: ArchivioLocale) async throws -> Int {
+        guard let origine = origineSincronia() else { return 0 }
+        let logon = tecnico.logon.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? tecnico.logon
+        guard let url = url(origine, "/api/tablet/\(logon)/chiusura") else { throw ErroreServer.url }
+        var inviate = 0
+        for chiusura in archivio.chiusureDaInviare(tecnicoID: tecnico.id) {
+            let corpo: [String: String] = [
+                "id": chiusura.id,
+                "stato": chiusura.stato,
+                "genere": chiusura.genere,
+            ]
+            let dati = try JSONSerialization.data(withJSONObject: corpo)
+            let (rispostaDati, http) = try await chiedi(url, metodo: "POST", corpo: dati)
+            guard (200...299).contains(http.statusCode) else {
+                throw ErroreServer.risposta(http.statusCode, messaggio(rispostaDati) ?? "La sincronia non ha accettato la chiusura.")
+            }
+            archivio.segnaChiusuraInviata(id: chiusura.id, stato: chiusura.stato)
+            inviate += 1
+        }
+        return inviate
+    }
+
+    private static func idsInterventiSulTablet(logon: String) async -> Set<String>? {
+        guard let origine = origineSincronia() else { return nil }
+        let percorso = "/api/tablet/\(logon.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? logon)"
+        do {
+            let dati = try await scarica(percorso, origine: origine, errore: "Elenco del tablet non disponibile.")
+            return identificativi(dati, chiave: "interventi")
+        } catch {
+            return nil
+        }
+    }
+
+    private static func origineSincronia() -> URL? {
+        guard var componenti = URLComponents(url: origine(urlTesto) ?? URL(string: urlPredefinito)!, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        componenti.port = 3013
+        return componenti.url
+    }
+
+    private static func identificativi(_ dati: Data, chiave: String) -> Set<String> {
+        guard let oggetto = try? JSONSerialization.jsonObject(with: dati) as? [String: Any],
+              let elenco = oggetto[chiave] as? [Any] else { return [] }
+        return Set(elenco.compactMap { elemento in
+            (elemento as? [String: Any])?["id"] as? String
+        })
     }
 
     private static func url(_ origine: URL, _ percorso: String) -> URL? {

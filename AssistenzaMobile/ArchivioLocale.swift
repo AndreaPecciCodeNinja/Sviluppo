@@ -23,7 +23,12 @@ final class ArchivioLocale {
     private(set) var clienti: [Cliente] = []
     private(set) var interventi: [Intervento] = []
     private(set) var ticket: [Ticket] = []
+    private(set) var schede: [String: SchedaManutenzione] = [:]
+    private(set) var pendingInterventi: [String: String] = [:]
+    private var urgenzeViste: Set<String> = []
     private(set) var sessioneTecnicoID: String?
+    var avvisoUrgente: String?
+    var ticketDaAprire: String?
     var erroreSalvataggio: String?
     var ultimoEsito: EsitoImportazione?
     var ultimoErroreImportazione: String?
@@ -183,9 +188,143 @@ final class ArchivioLocale {
 
     func aggiornaStatoTicket(id: String, tecnicoID: String, stato: StatoTicket) {
         guard let index = ticket.firstIndex(where: { $0.id == id && $0.tecnicoID == tecnicoID }) else { return }
+        if stato.chiuso, let scheda = schede[id], !scheda.workflowCompleto {
+            messaggioTicket = "Segui il workflow della macchina, nell'ordine, prima di chiudere il ticket."
+            return
+        }
         ticket[index].stato = stato
         ticket[index].aggiornato = .now
         salva()
+    }
+
+    func scheda(ticketID: String) -> SchedaManutenzione {
+        schede[ticketID] ?? SchedaManutenzione()
+    }
+
+    func workflowCompleto(ticketID: String) -> Bool {
+        scheda(ticketID: ticketID).workflowCompleto
+    }
+
+    @discardableResult
+    func unisciScheda(ticketID: String, scheda: SchedaManutenzione) -> Bool {
+        var nuova = scheda
+        if let esistente = schede[ticketID] {
+            if esistente.workflow == scheda.workflow {
+                nuova.passoWorkflow = esistente.passoWorkflow
+            }
+            if scheda.pendingTipologia.isEmpty {
+                nuova.pendingTipologia = esistente.pendingTipologia
+            }
+        }
+        guard schede[ticketID] != nuova else { return false }
+        schede[ticketID] = nuova
+        salvaManutenzione()
+        return true
+    }
+
+    func confermaPassoWorkflow(ticketID: String, tecnicoID: String) {
+        guard ticket(id: ticketID, visibileA: tecnicoID) != nil else { return }
+        var scheda = schede[ticketID] ?? SchedaManutenzione()
+        guard scheda.passoWorkflow < scheda.workflow.count else { return }
+        scheda.passoWorkflow += 1
+        schede[ticketID] = scheda
+        salvaManutenzione()
+    }
+
+    func mettiTicketInPending(id: String, tecnicoID: String, tipologia: TipologiaPending) {
+        guard let index = ticket.firstIndex(where: { $0.id == id && $0.tecnicoID == tecnicoID }) else { return }
+        ticket[index].stato = .inAttesaCliente
+        ticket[index].aggiornato = .now
+        var scheda = schede[id] ?? SchedaManutenzione()
+        scheda.pendingTipologia = tipologia.titolo
+        schede[id] = scheda
+        salva()
+        salvaManutenzione()
+    }
+
+    func mettiInterventoInPending(id: String, tecnicoID: String, tipologia: TipologiaPending) {
+        guard let index = interventi.firstIndex(where: { $0.id == id && $0.tecnicoID == tecnicoID }) else { return }
+        interventi[index].stato = .inAttesa
+        interventi[index].aggiornato = .now
+        pendingInterventi[id] = tipologia.titolo
+        salva()
+        salvaManutenzione()
+    }
+
+    func pendingIntervento(id: String) -> String? {
+        pendingInterventi[id]
+    }
+
+    /// Toglie gli elementi aperti che la sincronizzazione precedente aveva assegnato e che ora non ci sono più.
+    func rimuoviRiassegnati(
+        tecnicoID: String,
+        ticketRimasti: Set<String>,
+        interventiRimasti: Set<String>,
+        interventiSulTablet: Set<String>?
+    ) -> (ticket: Int, interventi: Int) {
+        var ticketTolti = 0
+        if let precedente = ultimaAssegnazioneTicket {
+            ticket.removeAll { voce in
+                guard voce.tecnicoID == tecnicoID, !voce.stato.chiuso, precedente.contains(voce.id), !ticketRimasti.contains(voce.id) else { return false }
+                schede[voce.id] = nil
+                ticketTolti += 1
+                return true
+            }
+        }
+        var interventiTolti = 0
+        interventi.removeAll { voce in
+            guard voce.tecnicoID == tecnicoID, !voce.stato.chiuso else { return false }
+            let uscitoDallApplicazione = ultimaAssegnazioneInterventi?.contains(voce.id) == true && !interventiRimasti.contains(voce.id)
+            let uscitoDalTablet = ultimoTablet?.contains(voce.id) == true && interventiSulTablet?.contains(voce.id) == false
+            guard uscitoDallApplicazione || uscitoDalTablet else { return false }
+            pendingInterventi[voce.id] = nil
+            interventiTolti += 1
+            return true
+        }
+        ultimaAssegnazioneTicket = ticketRimasti
+        ultimaAssegnazioneInterventi = interventiRimasti
+        if let interventiSulTablet {
+            ultimoTablet = interventiSulTablet
+        }
+        salvaManutenzione()
+        if ticketTolti + interventiTolti > 0 {
+            salva()
+        }
+        return (ticketTolti, interventiTolti)
+    }
+
+    func segnalaUrgenze(_ identificativi: [String]) {
+        let nuovi = identificativi.filter { schede[$0]?.urgente == true && !urgenzeViste.contains($0) }
+        guard !nuovi.isEmpty else { return }
+        urgenzeViste.formUnion(nuovi)
+        salvaManutenzione()
+        let titoli = nuovi.compactMap { id in ticket.first { $0.id == id }?.titolo }
+        avvisoUrgente = "Ticket in gestione urgente: \(titoli.joined(separator: ", "))."
+        ticketDaAprire = nuovi.first
+    }
+
+    func chiusureDaInviare(tecnicoID: String) -> [(id: String, stato: String, genere: String)] {
+        let ticketChiusi = ticket
+            .filter { $0.tecnicoID == tecnicoID && $0.stato.chiuso && !chiusureInviate.contains(chiaveChiusura($0.id, $0.stato.rawValue)) }
+            .map { (id: $0.id, stato: $0.stato.rawValue, genere: "ticket") }
+        let interventiChiusi = interventi
+            .filter { $0.tecnicoID == tecnicoID && $0.stato.chiuso && !chiusureInviate.contains(chiaveChiusura($0.id, $0.stato.rawValue)) }
+            .map { (id: $0.id, stato: $0.stato.rawValue, genere: "intervento") }
+        return ticketChiusi + interventiChiusi
+    }
+
+    func segnaChiusuraInviata(id: String, stato: String) {
+        chiusureInviate.insert(chiaveChiusura(id, stato))
+        salvaManutenzione()
+    }
+
+    private var chiusureInviate: Set<String> = []
+    private var ultimaAssegnazioneTicket: Set<String>?
+    private var ultimaAssegnazioneInterventi: Set<String>?
+    private var ultimoTablet: Set<String>?
+
+    private func chiaveChiusura(_ id: String, _ stato: String) -> String {
+        "\(id)|\(stato)"
     }
 
     func aggiungiNota(interventoID: String, tecnicoID: String, testo: String, autore: String) {
@@ -345,14 +484,51 @@ final class ArchivioLocale {
                 return data
             }
             applica(try decoder.decode(ArchivioFile.self, from: dati))
+            caricaManutenzione()
         } catch {
             let backup = percorso.deletingLastPathComponent().appendingPathComponent("archivio-illeggibile.json")
             try? fileManager.removeItem(at: backup)
             try? fileManager.copyItem(at: percorso, to: backup)
             erroreSalvataggio = "L'archivio locale era illeggibile. È stata tenuta una copia e sono stati ripristinati i dati dimostrativi."
             applica(Self.dimostrativo())
+            schede = [:]
+            pendingInterventi = [:]
+            urgenzeViste = []
+            chiusureInviate = []
             salva()
+            salvaManutenzione()
         }
+    }
+
+    private var percorsoManutenzione: URL {
+        percorso.deletingLastPathComponent().appendingPathComponent("manutenzione.json")
+    }
+
+    private func caricaManutenzione() {
+        guard FileManager.default.fileExists(atPath: percorsoManutenzione.path) else { return }
+        guard let dati = try? Data(contentsOf: percorsoManutenzione),
+              let file = try? JSONDecoder().decode(ManutenzioneFile.self, from: dati) else { return }
+        schede = file.schede
+        pendingInterventi = file.pendingInterventi
+        urgenzeViste = Set(file.urgenzeViste)
+        chiusureInviate = Set(file.chiusureInviate)
+        ultimaAssegnazioneTicket = file.ultimaAssegnazioneTicket.map(Set.init)
+        ultimaAssegnazioneInterventi = file.ultimaAssegnazioneInterventi.map(Set.init)
+        ultimoTablet = file.ultimoTablet.map(Set.init)
+    }
+
+    private func salvaManutenzione() {
+        let file = ManutenzioneFile(
+            schede: schede,
+            pendingInterventi: pendingInterventi,
+            urgenzeViste: Array(urgenzeViste).sorted(),
+            chiusureInviate: Array(chiusureInviate).sorted(),
+            ultimaAssegnazioneTicket: ultimaAssegnazioneTicket?.sorted(),
+            ultimaAssegnazioneInterventi: ultimaAssegnazioneInterventi?.sorted(),
+            ultimoTablet: ultimoTablet?.sorted()
+        )
+        guard let dati = try? JSONEncoder().encode(file) else { return }
+        try? dati.write(to: percorsoManutenzione, options: .atomic)
     }
 
     private func applica(_ file: ArchivioFile) {
@@ -621,6 +797,61 @@ final class ArchivioLocale {
         let inizio = calendario.startOfDay(for: .now)
         let giornoBase = calendario.date(byAdding: .day, value: giorno, to: inizio) ?? inizio
         return calendario.date(bySettingHour: ora, minute: minuto, second: 0, of: giornoBase) ?? giornoBase
+    }
+}
+
+private struct ManutenzioneFile: Codable {
+    var schede: [String: SchedaManutenzione] = [:]
+    var pendingInterventi: [String: String] = [:]
+    var urgenzeViste: [String] = []
+    var chiusureInviate: [String] = []
+    var ultimaAssegnazioneTicket: [String]?
+    var ultimaAssegnazioneInterventi: [String]?
+    var ultimoTablet: [String]?
+
+    private enum CodingKeys: String, CodingKey {
+        case schede, pendingInterventi, urgenzeViste, chiusureInviate
+        case ultimaAssegnazioneTicket, ultimaAssegnazioneInterventi, ultimoTablet
+    }
+
+    init(
+        schede: [String: SchedaManutenzione],
+        pendingInterventi: [String: String],
+        urgenzeViste: [String],
+        chiusureInviate: [String],
+        ultimaAssegnazioneTicket: [String]?,
+        ultimaAssegnazioneInterventi: [String]?,
+        ultimoTablet: [String]?
+    ) {
+        self.schede = schede
+        self.pendingInterventi = pendingInterventi
+        self.urgenzeViste = urgenzeViste
+        self.chiusureInviate = chiusureInviate
+        self.ultimaAssegnazioneTicket = ultimaAssegnazioneTicket
+        self.ultimaAssegnazioneInterventi = ultimaAssegnazioneInterventi
+        self.ultimoTablet = ultimoTablet
+    }
+
+    init(from decoder: Decoder) throws {
+        let contenitore = try decoder.container(keyedBy: CodingKeys.self)
+        schede = try contenitore.decodeIfPresent([String: SchedaManutenzione].self, forKey: .schede) ?? [:]
+        pendingInterventi = try contenitore.decodeIfPresent([String: String].self, forKey: .pendingInterventi) ?? [:]
+        urgenzeViste = try contenitore.decodeIfPresent([String].self, forKey: .urgenzeViste) ?? []
+        chiusureInviate = try contenitore.decodeIfPresent([String].self, forKey: .chiusureInviate) ?? []
+        ultimaAssegnazioneTicket = try contenitore.decodeIfPresent([String].self, forKey: .ultimaAssegnazioneTicket)
+        ultimaAssegnazioneInterventi = try contenitore.decodeIfPresent([String].self, forKey: .ultimaAssegnazioneInterventi)
+        ultimoTablet = try contenitore.decodeIfPresent([String].self, forKey: .ultimoTablet)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var contenitore = encoder.container(keyedBy: CodingKeys.self)
+        try contenitore.encode(schede, forKey: .schede)
+        try contenitore.encode(pendingInterventi, forKey: .pendingInterventi)
+        try contenitore.encode(urgenzeViste, forKey: .urgenzeViste)
+        try contenitore.encode(chiusureInviate, forKey: .chiusureInviate)
+        try contenitore.encodeIfPresent(ultimaAssegnazioneTicket, forKey: .ultimaAssegnazioneTicket)
+        try contenitore.encodeIfPresent(ultimaAssegnazioneInterventi, forKey: .ultimaAssegnazioneInterventi)
+        try contenitore.encodeIfPresent(ultimoTablet, forKey: .ultimoTablet)
     }
 }
 

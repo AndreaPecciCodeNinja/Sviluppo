@@ -183,3 +183,90 @@ enum Priorita: String, Codable, CaseIterable, Identifiable {
         }
     }
 }
+
+enum TipologiaPending: String, CaseIterable, Identifiable {
+    case problemaTecnico = "Problema tecnico"
+    case assenza = "Assenza dell'operatore"
+    case ricambio = "Attesa ricambio"
+    case impianto = "Indisponibilità dell'impianto"
+
+    var id: String { rawValue }
+
+    var titolo: String { rawValue }
+
+    /// La causale che Sara legge: problema tecnico oppure motivo extra tecnico.
+    var causale: String {
+        switch self {
+        case .problemaTecnico, .ricambio:
+            return "problema tecnico"
+        case .assenza, .impianto:
+            return "extra tecnico"
+        }
+    }
+}
+
+struct SchedaManutenzione: Codable, Equatable {
+    var origine: String = ""
+    var tipologia: String = ""
+    var macchina: String = ""
+    var tipoMacchina: String = ""
+    var segnalazioneImmediata: Bool = false
+    var statoGestione: String = ""
+    var anomaliaRispettoAlPiano: Bool = false
+    var manualeTitolo: String = ""
+    var manualeTesto: String = ""
+    var workflow: [String] = []
+    var passoWorkflow: Int = 0
+    var pendingTipologia: String = ""
+
+    var urgente: Bool {
+        segnalazioneImmediata || statoGestione == "ticket in gestione urgente"
+    }
+
+    var workflowCompleto: Bool {
+        workflow.isEmpty || passoWorkflow >= workflow.count
+    }
+
+    var haManuale: Bool {
+        !manualeTitolo.isEmpty || !manualeTesto.isEmpty
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case origine, tipologia, macchina, tipoMacchina, segnalazioneImmediata, statoGestione
+        case anomaliaRispettoAlPiano, manualeTitolo, manualeTesto, workflow, passoWorkflow, pendingTipologia
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let contenitore = try decoder.container(keyedBy: CodingKeys.self)
+        origine = try contenitore.decodeIfPresent(String.self, forKey: .origine) ?? ""
+        tipologia = try contenitore.decodeIfPresent(String.self, forKey: .tipologia) ?? ""
+        macchina = try contenitore.decodeIfPresent(String.self, forKey: .macchina) ?? ""
+        tipoMacchina = try contenitore.decodeIfPresent(String.self, forKey: .tipoMacchina) ?? ""
+        segnalazioneImmediata = try contenitore.decodeIfPresent(Bool.self, forKey: .segnalazioneImmediata) ?? false
+        statoGestione = try contenitore.decodeIfPresent(String.self, forKey: .statoGestione) ?? ""
+        anomaliaRispettoAlPiano = try contenitore.decodeIfPresent(Bool.self, forKey: .anomaliaRispettoAlPiano) ?? false
+        manualeTitolo = try contenitore.decodeIfPresent(String.self, forKey: .manualeTitolo) ?? ""
+        manualeTesto = try contenitore.decodeIfPresent(String.self, forKey: .manualeTesto) ?? ""
+        workflow = try contenitore.decodeIfPresent([String].self, forKey: .workflow) ?? []
+        passoWorkflow = try contenitore.decodeIfPresent(Int.self, forKey: .passoWorkflow) ?? 0
+        pendingTipologia = try contenitore.decodeIfPresent(String.self, forKey: .pendingTipologia) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var contenitore = encoder.container(keyedBy: CodingKeys.self)
+        try contenitore.encode(origine, forKey: .origine)
+        try contenitore.encode(tipologia, forKey: .tipologia)
+        try contenitore.encode(macchina, forKey: .macchina)
+        try contenitore.encode(tipoMacchina, forKey: .tipoMacchina)
+        try contenitore.encode(segnalazioneImmediata, forKey: .segnalazioneImmediata)
+        try contenitore.encode(statoGestione, forKey: .statoGestione)
+        try contenitore.encode(anomaliaRispettoAlPiano, forKey: .anomaliaRispettoAlPiano)
+        try contenitore.encode(manualeTitolo, forKey: .manualeTitolo)
+        try contenitore.encode(manualeTesto, forKey: .manualeTesto)
+        try contenitore.encode(workflow, forKey: .workflow)
+        try contenitore.encode(passoWorkflow, forKey: .passoWorkflow)
+        try contenitore.encode(pendingTipologia, forKey: .pendingTipologia)
+    }
+}

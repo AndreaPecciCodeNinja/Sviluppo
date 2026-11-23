@@ -111,6 +111,14 @@ node demo-sincronia/server.mjs
 
 Poi apri http://127.0.0.1:3013/. La macchina parla solo con questa porta. La sincronia inoltra ogni ticket all'applicazione e, se la tipologia è critica, lo segnala sul tablet del tecnico. In automatico il trasferimento parte da solo. In manuale parte da **Conferma**. Sara pubblica il report per operatore e, se tablet e applicazione non coincidono, ritrasferisce lei: il suo stato fa fede. Un cambio tecnico toglie l'intervento dal primo tablet e lo mette sul secondo. Se l'intervento era già in corso, torna in pending con la causale e rientra sull'applicazione. Le parti nuove sono segnate con **Nuovo**.
 
+## iPad, manutenzione predittiva
+
+Con demo, sincronia e macchina accese, apri l'app in landscape ed entra come `marco.bianchi`. In **Sincronizzazione** premi **Sincronizza con la demo**.
+
+Sulla macchina premi **Rischio di blocco**, poi sincronizza di nuovo l'iPad. Compare l'avviso **Ticket in gestione urgente**: il ticket è in cima, con il contrassegno **Nuovo**. Nel dettaglio ci sono il manuale e il workflow. **Ho fatto questo passo** avanza un passo alla volta. **Chiuso** e **Risolto** restano bloccati fino all'ultimo passo. Poi chiudi il ticket e sincronizza: la chiusura va alla sincronia sulla porta 3013 e sull'applicazione compare **sincronizzato correttamente**.
+
+**Metti in pending** sceglie la tipologia, sul ticket o sull'intervento, e la manda alla sincronia con la causale. Un intervento riassegnato sulla demo sparisce dall'iPad del tecnico precedente alla sincronizzazione successiva e compare su quello del nuovo tecnico.
+
 ## Dati sul dispositivo
 
 L'archivio è un JSON nella cartella Application Support dell'app. Chiudere l'app e riaprirla, anche senza rete, conserva interventi, note, ticket e risposte.
