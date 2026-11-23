@@ -80,7 +80,7 @@ struct VistaTicket: View {
                                     guard let tecnicoID else { return }
                                     archivio.aggiornaStatoTicket(id: ticket.id, tecnicoID: tecnicoID, stato: stato)
                                 }
-                                .disabled(stato.chiuso && !archivio.workflowCompleto(ticket.id))
+                                .disabled(stato.chiuso && !archivio.workflowCompleto(ticketID: ticket.id))
                             }
                         }
                 }
@@ -420,7 +420,7 @@ struct DettaglioTicket: View {
                                 Text(stato.titolo)
                             }
                         }
-                        .disabled(stato.chiuso && !archivio.workflowCompleto(ticket.id))
+                        .disabled(stato.chiuso && !archivio.workflowCompleto(ticketID: ticket.id))
                     }
                 } label: {
                     Label("Cambia stato", systemImage: "arrow.triangle.2.circlepath")
@@ -536,7 +536,7 @@ struct EditorTicket: View {
         guard let tecnicoID = sessione.tecnicoID else { return }
         let titoloPulito = titolo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !titoloPulito.isEmpty, !clienteID.isEmpty else { return }
-        if stato.chiuso, let id = esistente?.id, !archivio.workflowCompleto(id) {
+        if stato.chiuso, let id = esistente?.id, !archivio.workflowCompleto(ticketID: id) {
             errore = "Segui il workflow della macchina prima di chiudere il ticket."
             return
         }
