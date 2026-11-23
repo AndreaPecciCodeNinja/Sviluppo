@@ -61,34 +61,35 @@ avvia() {
   echo "$nome su http://127.0.0.1:$porta/"
 }
 
-# Cartella e comando non sono in questo repository né nel workspace.
-# Restano vuoti: non si inventa un server. Spegni chiude comunque la porta.
-HUB_PORTALI_CARTELLA=""
-HUB_PORTALI_COMANDO=""
-CRM_DEMO_CARTELLA=""
-CRM_DEMO_COMANDO=""
+# gestisci.mjs non è in questo repository: sta sul Mac di Andrea.
+# Non viene creato qui. Spegni chiude comunque 3010 e 3013.
+SVILUPPO_MAC="/Users/macair_andrea/Documents/Sviluppo"
+GESTISCI="$SVILUPPO_MAC/pannello-demo/gestisci.mjs"
 
-avvia_se_nota() {
+avvia_con_gestisci() {
   nome="$1"
   porta="$2"
-  cartella="$3"
-  comando="$4"
+  argomento="$3"
+  comando="node pannello-demo/gestisci.mjs avvia $argomento"
   if in_ascolto "$porta"; then
     echo "$nome è già in ascolto su http://127.0.0.1:$porta/"
     return 0
   fi
-  if [ -z "$cartella" ] || [ -z "$comando" ]; then
-    echo "$nome ($porta): percorso e comando non noti. Non viene avviata. Spegni le demo chiude comunque il listener."
+  if [ ! -d "$SVILUPPO_MAC" ]; then
+    echo "$nome ($porta): cartella non trovata: $SVILUPPO_MAC" >&2
+    echo "Comando, con quella cartella come directory di lavoro: $comando" >&2
     return 0
   fi
-  if [ ! -d "$cartella" ]; then
-    echo "$nome ($porta): cartella non trovata: $cartella"
-    return 0
+  if [ ! -f "$GESTISCI" ]; then
+    echo "$nome ($porta): pannello-demo/gestisci.mjs non è in questo repository." >&2
+    echo "Comando previsto sul Mac di Andrea, da $SVILUPPO_MAC: $comando" >&2
+    echo "Lo script non è stato creato." >&2
+    return 1
   fi
   : > "$STATO/$nome.log"
   (
-    cd "$cartella" || exit 1
-    nohup bash -lc "$comando" >>"$STATO/$nome.log" 2>&1 &
+    cd "$SVILUPPO_MAC" || exit 1
+    nohup node pannello-demo/gestisci.mjs avvia "$argomento" >>"$STATO/$nome.log" 2>&1 &
     echo $! > "$STATO/$nome.pid"
   )
   if ! attendi "$porta" "$nome" "$nome" 80; then
@@ -126,8 +127,8 @@ avvia_assistenza_tecnica() {
 }
 
 cd "$ROOT"
-avvia_se_nota "hub" 3010 "$HUB_PORTALI_CARTELLA" "$HUB_PORTALI_COMANDO"
-avvia_se_nota "crm" 3013 "$CRM_DEMO_CARTELLA" "$CRM_DEMO_COMANDO"
+avvia_con_gestisci "hub" 3010 "hub" || exit 1
+avvia_con_gestisci "crm" 3013 "crm" || exit 1
 avvia "assistenza" 3021 "demo-assistenza/server.mjs" || exit 1
 avvia "sincronia" 3022 "demo-sincronia/server.mjs" || exit 1
 avvia "macchina" 3023 "demo-macchina/server.mjs" || exit 1

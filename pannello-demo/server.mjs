@@ -185,11 +185,15 @@ function pagina() {
       <h2>Stato</h2>
       <ul>${righe}</ul>
       <p class="nota" id="quando">Lettura dello stato in corso.</p>
-      <p class="nota">Avvia le demo accende 3014, 3021, 3022 e 3023. Hub portali (3010) e CRM Demo (3013) sono nello stesso elenco di Spegni, ma cartella e comando non sono in questo repository né nel workspace: si avviano solo se il percorso è noto. Nessun server è stato inventato. Il pannello sulla porta 3020 non viene riavviato. Spegni le demo chiude 3010, 3013, 3014, 3021, 3022 e 3023 e, per ultimo, il listener 3020.</p>
+      <p class="nota">Avvia le demo accende 3010, 3013, 3014, 3021, 3022 e 3023. Il pannello sulla porta 3020 non viene riavviato. Spegni le demo chiude le stesse porte e, per ultimo, il listener 3020.</p>
     </section>
     <section>
       <h2>Hub portali e CRM Demo</h2>
-      <p>Porte 3010 e 3013. Non ci sono qui la cartella né il comando di avvio. <strong>Avvia le demo</strong> non le accende. <strong>Spegni le demo</strong> chiude il processo che è in ascolto, se c’è.</p>
+      <p>Porte 3010 e 3013. <strong>Avvia le demo</strong> le accende da questa cartella:</p>
+      <pre>/Users/macair_andrea/Documents/Sviluppo</pre>
+      <pre>node pannello-demo/gestisci.mjs avvia hub
+node pannello-demo/gestisci.mjs avvia crm</pre>
+      <p>gestisci.mjs non è in questo repository: è sul Mac di Andrea e non è stato ricreato qui. <strong>Spegni le demo</strong> chiude i listener 3010 e 3013.</p>
     </section>
     <section>
       <h2>Assistenza Tecnica Demo</h2>
