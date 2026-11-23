@@ -1,0 +1,277 @@
+{
+  "tecnici": [
+    {
+      "id": "tec-marco.bianchi",
+      "logon": "marco.bianchi",
+      "nome": "Marco Bianchi",
+      "password": "assistenza"
+    },
+    {
+      "id": "tec-lucia.ferrari",
+      "logon": "lucia.ferrari",
+      "nome": "Lucia Ferrari",
+      "password": "assistenza"
+    },
+    {
+      "id": "tec-paolo.conti",
+      "logon": "paolo.conti",
+      "nome": "Paolo Conti",
+      "password": "assistenza"
+    }
+  ],
+  "clienti": [
+    {
+      "id": "cli-studio-conti",
+      "nome": "Studio Legale Conti",
+      "referente": "Anna Conti",
+      "telefono": "+39 06 555 0101",
+      "email": "anna.conti@studio-conti.example",
+      "indirizzo": "Via del Corso 18, Roma",
+      "note": "Citofono 4, terzo piano. Chiedere di Anna in reception.",
+      "logonTecnico": "marco.bianchi"
+    },
+    {
+      "id": "cli-farmacia-san-marco",
+      "nome": "Farmacia San Marco",
+      "referente": "Luca Greco",
+      "telefono": "+39 06 555 0102",
+      "email": "luca.greco@farmacia-san-marco.example",
+      "indirizzo": "Piazza Navona 4, Roma",
+      "note": "Entrata su Piazza Navona, banco ricette a sinistra.",
+      "logonTecnico": "marco.bianchi"
+    },
+    {
+      "id": "cli-bar-centrale",
+      "nome": "Bar Centrale",
+      "referente": "Paolo Neri",
+      "telefono": "+39 02 555 0103",
+      "email": "paolo.neri@bar-centrale.example",
+      "indirizzo": "Via Torino 9, Milano",
+      "note": "Serranda laterale in via Torino se il bar è chiuso.",
+      "logonTecnico": "lucia.ferrari"
+    },
+    {
+      "id": "cli-scuola-manzoni",
+      "nome": "Scuola Manzoni",
+      "referente": "Elena Riva",
+      "telefono": "+39 02 555 0104",
+      "email": "elena.riva@scuola-manzoni.example",
+      "indirizzo": "Viale Monza 40, Milano",
+      "note": "Presentarsi in portineria con un documento.",
+      "logonTecnico": "lucia.ferrari"
+    },
+    {
+      "id": "cli-paolo-tipografia",
+      "nome": "Tipografia Nord",
+      "referente": "Sara Villa",
+      "telefono": "+39 011 555 0142",
+      "email": "sara.villa@tipografia-nord.example",
+      "indirizzo": "Corso Francia 22, Torino",
+      "logonTecnico": "paolo.conti"
+    },
+    {
+      "id": "cli-paolo-studio-medico",
+      "nome": "Studio Medico Riva",
+      "referente": "Elena Riva",
+      "telefono": "+39 011 555 0177",
+      "email": "segreteria@studio-riva.example",
+      "indirizzo": "Via Po 8, Torino",
+      "logonTecnico": "paolo.conti"
+    }
+  ],
+  "interventi": [
+    {
+      "id": "int-marco-router",
+      "titolo": "Sostituzione router in sala riunioni",
+      "descrizione": "Il router si spegne dopo qualche ora e la rete dello studio cade.",
+      "clienteId": "cli-studio-conti",
+      "logonTecnico": "marco.bianchi",
+      "stato": "in_corso",
+      "priorita": "alta",
+      "appuntamento": "2026-11-22T09:30:00+01:00",
+      "indirizzo": "Via del Corso 18, Roma",
+      "aggiornato": "2026-11-22T09:40:00+01:00",
+      "note": [
+        {
+          "id": "nota-marco-router-1",
+          "testo": "Il cliente segnala che il router si spegne da solo. Portare un ricambio.",
+          "autore": "Coordinamento",
+          "data": "2026-11-21T18:10:00+01:00"
+        }
+      ]
+    },
+    {
+      "id": "int-marco-stampante",
+      "titolo": "Configurazione stampante etichette",
+      "descrizione": "Nuova stampante per le etichette dei preparati.",
+      "clienteId": "cli-farmacia-san-marco",
+      "logonTecnico": "marco.bianchi",
+      "stato": "programmato",
+      "priorita": "media",
+      "appuntamento": "2026-11-22T15:00:00+01:00",
+      "indirizzo": "Piazza Navona 4, Roma",
+      "aggiornato": "2026-11-22T08:00:00+01:00",
+      "note": []
+    },
+    {
+      "id": "int-lucia-cassa",
+      "titolo": "Cassa non stampa gli scontrini",
+      "descrizione": "La stampante fiscale non emette gli scontrini.",
+      "clienteId": "cli-bar-centrale",
+      "logonTecnico": "lucia.ferrari",
+      "stato": "in_attesa",
+      "priorita": "urgente",
+      "appuntamento": "2026-11-22T10:15:00+01:00",
+      "indirizzo": "Via Torino 9, Milano",
+      "aggiornato": "2026-11-22T10:20:00+01:00",
+      "note": [
+        {
+          "id": "nota-lucia-cassa-1",
+          "testo": "In attesa del codice errore che Paolo legge sul display.",
+          "autore": "Lucia Ferrari",
+          "data": "2026-11-22T10:20:00+01:00"
+        }
+      ]
+    },
+    {
+      "id": "int-lucia-aula",
+      "titolo": "Cablaggio aula informatica",
+      "descrizione": "Predisporre i punti rete dei dodici banchi.",
+      "clienteId": "cli-scuola-manzoni",
+      "logonTecnico": "lucia.ferrari",
+      "stato": "programmato",
+      "priorita": "alta",
+      "appuntamento": "2026-11-23T08:30:00+01:00",
+      "indirizzo": "Viale Monza 40, Milano",
+      "aggiornato": "2026-11-22T08:00:00+01:00",
+      "note": []
+    },
+    {
+      "id": "int-paolo-plotter",
+      "titolo": "Manutenzione plotter",
+      "descrizione": "Il plotter si ferma a metà stampa. Controllare testina e cavi.",
+      "clienteId": "cli-paolo-tipografia",
+      "logonTecnico": "paolo.conti",
+      "stato": "programmato",
+      "priorita": "alta",
+      "appuntamento": "2026-11-23T09:00:00+01:00",
+      "indirizzo": "Corso Francia 22, Torino",
+      "aggiornato": "2026-11-22T08:00:00+01:00",
+      "note": [
+        {
+          "id": "nota-paolo-1",
+          "testo": "Portare il kit di pulizia testine.",
+          "autore": "Coordinamento",
+          "data": "2026-11-22T08:00:00+01:00"
+        }
+      ]
+    },
+    {
+      "id": "int-paolo-rete",
+      "titolo": "Verifica rete sala attesa",
+      "descrizione": "Il Wi-Fi della sala attesa non è disponibile dal 21 novembre.",
+      "clienteId": "cli-paolo-studio-medico",
+      "logonTecnico": "paolo.conti",
+      "stato": "in_corso",
+      "priorita": "media",
+      "appuntamento": "2026-11-22T16:30:00+01:00",
+      "indirizzo": "Via Po 8, Torino",
+      "aggiornato": "2026-11-22T08:00:00+01:00",
+      "note": []
+    }
+  ],
+  "ticket": [
+    {
+      "id": "tck-marco-eseguito",
+      "titolo": "Toner sostituito in reception",
+      "descrizione": "Ticket completato sul server. L'iPad lo scarica con Scarica eseguiti.",
+      "clienteId": "cli-studio-conti",
+      "logonTecnico": "marco.bianchi",
+      "stato": "risolto",
+      "priorita": "bassa",
+      "aperto": "2026-11-21T16:00:00+01:00",
+      "aggiornato": "2026-11-21T17:00:00+01:00",
+      "risposte": [
+        {
+          "id": "ris-marco-eseguito-1",
+          "testo": "Toner sostituito e stampa di prova fatta.",
+          "autore": "Marco Bianchi",
+          "data": "2026-11-21T17:00:00+01:00"
+        }
+      ]
+    },
+    {
+      "id": "tck-marco-posta",
+      "titolo": "Posta che richiede la password",
+      "descrizione": "Outlook chiede la password in continuazione.",
+      "clienteId": "cli-studio-conti",
+      "logonTecnico": "marco.bianchi",
+      "stato": "aperto",
+      "priorita": "alta",
+      "aggiornato": "2026-11-22T08:40:00+01:00",
+      "risposte": [
+        {
+          "id": "ris-marco-posta-1",
+          "testo": "Succede su tre computer, non solo sul mio.",
+          "autore": "Anna Conti",
+          "data": "2026-11-22T08:15:00+01:00"
+        }
+      ]
+    },
+    {
+      "id": "tck-marco-cassetto",
+      "titolo": "Cassetto contanti non si apre",
+      "descrizione": "Il cassetto collegato alla cassa non risponde al comando di apertura.",
+      "clienteId": "cli-farmacia-san-marco",
+      "logonTecnico": "marco.bianchi",
+      "stato": "in_lavorazione",
+      "priorita": "media",
+      "aggiornato": "2026-11-22T09:05:00+01:00",
+      "risposte": [
+        {
+          "id": "ris-marco-cassetto-1",
+          "testo": "Si è bloccato dopo la chiusura di ieri sera.",
+          "autore": "Luca Greco",
+          "data": "2026-11-22T09:05:00+01:00"
+        }
+      ]
+    },
+    {
+      "id": "tck-lucia-wifi",
+      "titolo": "Wi-Fi ospiti non disponibile",
+      "descrizione": "La rete ospiti del bar non compare tra le reti disponibili.",
+      "clienteId": "cli-bar-centrale",
+      "logonTecnico": "lucia.ferrari",
+      "stato": "in_attesa_cliente",
+      "priorita": "media",
+      "aggiornato": "2026-11-21T16:45:00+01:00",
+      "risposte": [
+        {
+          "id": "ris-lucia-wifi-1",
+          "testo": "I clienti del bar non vedono la rete Ospiti da ieri pomeriggio.",
+          "autore": "Paolo Neri",
+          "data": "2026-11-21T16:45:00+01:00"
+        }
+      ]
+    },
+    {
+      "id": "tck-paolo-backup",
+      "titolo": "Backup notturno fallito",
+      "descrizione": "Il gestionale segnala un backup incompleto da tre giorni.",
+      "clienteId": "cli-paolo-tipografia",
+      "logonTecnico": "paolo.conti",
+      "stato": "aperto",
+      "priorita": "alta",
+      "aggiornato": "2026-11-22T09:15:00+01:00",
+      "risposte": [
+        {
+          "id": "ris-paolo-1",
+          "testo": "Potete intervenire prima della chiusura di venerdì?",
+          "autore": "Sara Villa",
+          "data": "2026-11-22T09:15:00+01:00"
+        }
+      ]
+    }
+  ],
+  "aggiornamenti": []
+}

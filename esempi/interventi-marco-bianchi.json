@@ -1,0 +1,40 @@
+{
+  "interventi": [
+    {
+      "id": "int-marco-catalogo",
+      "titolo": "Postazione catalogo bloccata",
+      "descrizione": "Il PC del banco prestiti non apre il catalogo.",
+      "logonTecnico": "marco.bianchi",
+      "stato": "programmato",
+      "priorita": "urgente",
+      "appuntamento": "2026-11-23T11:15:00+01:00",
+      "indirizzo": "Via Ostiense 100, Roma",
+      "cliente": {
+        "id": "cli-marco-biblioteca",
+        "nome": "Biblioteca Civica",
+        "referente": "Marta Leone",
+        "telefono": "+39 06 555 0190",
+        "email": "marta.leone@biblioteca-civica.example",
+        "indirizzo": "Via Ostiense 100, Roma"
+      },
+      "note": [
+        {
+          "testo": "Il personale apre alle 9.",
+          "autore": "Biblioteca",
+          "data": "2026-11-22T12:00:00+01:00"
+        }
+      ]
+    }
+  ],
+  "ticket": [
+    {
+      "id": "tck-marco-stampante",
+      "titolo": "Stampante tessere lettori",
+      "descrizione": "La stampante delle tessere non viene vista dal PC del banco.",
+      "clienteId": "cli-marco-biblioteca",
+      "logonTecnico": "marco.bianchi",
+      "stato": "in_lavorazione",
+      "priorita": "media"
+    }
+  ]
+}
