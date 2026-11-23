@@ -1,9 +1,9 @@
 import Foundation
 
-/// Client verso la demo «Assistenza Tecnica Demo» in demo-assistenza, porta 3012.
+/// Client verso la demo «Assistenza Tecnica Demo» in demo-assistenza, porta 3020.
 @MainActor
 enum ClienteServer {
-    static let urlPredefinito = "http://127.0.0.1:3012"
+    static let urlPredefinito = "http://127.0.0.1:3020"
     private static let chiaveURL = "it.sviluppo.assistenza.urlServer"
 
     static var urlTesto: String {
@@ -287,7 +287,7 @@ enum ClienteServer {
         guard var componenti = URLComponents(url: origine(urlTesto) ?? URL(string: urlPredefinito)!, resolvingAgainstBaseURL: false) else {
             return nil
         }
-        componenti.port = 3013
+        componenti.port = 3021
         return componenti.url
     }
 

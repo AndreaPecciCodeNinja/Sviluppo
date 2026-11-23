@@ -9,9 +9,9 @@ const HOST = "127.0.0.1";
 const RADICE = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const SERVIZI = [
-  { id: "assistenza", nome: "Assistenza", porta: 3012 },
-  { id: "sincronia", nome: "Sincronia", porta: 3013 },
-  { id: "macchina", nome: "Macchina", porta: 3014 },
+  { id: "assistenza", nome: "Assistenza", porta: 3020 },
+  { id: "sincronia", nome: "Sincronia", porta: 3021 },
+  { id: "macchina", nome: "Macchina", porta: 3022 },
 ];
 
 let comandoInCorso = null;

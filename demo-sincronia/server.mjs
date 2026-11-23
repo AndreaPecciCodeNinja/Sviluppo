@@ -4,9 +4,9 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PORTA = Number(process.env.PORTA_SINCRO || 3013);
+const PORTA = Number(process.env.PORTA_SINCRO || 3021);
 const HOST = "127.0.0.1";
-const URL_APP = process.env.APP_URL || "http://127.0.0.1:3012";
+const URL_APP = process.env.APP_URL || "http://127.0.0.1:3020";
 const RADICE = dirname(fileURLToPath(import.meta.url));
 const CARTELLA_DATI = join(RADICE, "dati");
 const PERCORSO_ARCHIVIO = join(CARTELLA_DATI, "archivio.json");

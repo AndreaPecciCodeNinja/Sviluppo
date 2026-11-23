@@ -4,10 +4,10 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PORTA = 3012;
+const PORTA = 3020;
 const HOST = "127.0.0.1";
-const URL_SINCRO = process.env.SINCRO_INGRESSO || "http://127.0.0.1:3013/api/ingresso";
-const URL_SARA = process.env.SARA_URL || "http://127.0.0.1:3013/api/sara/dialogo";
+const URL_SINCRO = process.env.SINCRO_INGRESSO || "http://127.0.0.1:3021/api/ingresso";
+const URL_SARA = process.env.SARA_URL || "http://127.0.0.1:3021/api/sara/dialogo";
 const RADICE = dirname(fileURLToPath(import.meta.url));
 const PERCORSO_SEED = join(RADICE, "seed.json");
 const CARTELLA_DATI = join(RADICE, "dati");
