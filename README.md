@@ -89,6 +89,16 @@ L'iPad, in **Sincronizzazione**, usa la stessa origine:
 
 Se il server è spento, l'app iPad continua a funzionare con l'archivio sul dispositivo.
 
+## Macchina simulata
+
+Servizio a parte, porta **3014**. Il tipo di macchina è il file `demo-macchina/macchine/lavatrice-lavanderia.json` (lavatrice di lavanderia industriale). I parametri di funzionamento e di consumo cambiano in continuo. I comandi generano i ticket e li inviano a `POST /api/sincronizzazione` della demo sulla porta 3012.
+
+```bash
+node demo-macchina/server.mjs
+```
+
+Poi apri http://127.0.0.1:3014/. Le parti nuove sono segnate con **Nuovo**.
+
 ## Dati sul dispositivo
 
 L'archivio è un JSON nella cartella Application Support dell'app. Chiudere l'app e riaprirla, anche senza rete, conserva interventi, note, ticket e risposte.

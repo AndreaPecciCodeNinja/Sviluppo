@@ -1,0 +1,136 @@
+{
+  "id": "lavatrice-01",
+  "nome": "Lavatrice industriale 1",
+  "tipo": "lavatrice-lavanderia",
+  "tipoEtichetta": "Lavatrice di lavanderia industriale",
+  "logonTecnico": "marco.bianchi",
+  "clienteId": "",
+  "sincronia": "http://127.0.0.1:3012/api/sincronizzazione",
+  "intervalloMs": 2000,
+  "parametri": [
+    {
+      "id": "temperatura",
+      "famiglia": "Funzionamento",
+      "nome": "Temperatura",
+      "unita": "°C",
+      "atteso": 60,
+      "attesoTesto": "60 °C",
+      "minimo": 55,
+      "massimo": 70,
+      "iniziale": 61,
+      "rumore": 0.4
+    },
+    {
+      "id": "vibrazioniCestello",
+      "famiglia": "Funzionamento",
+      "nome": "Vibrazioni del cestello",
+      "unita": "mm/s",
+      "atteso": 2,
+      "attesoTesto": "2 mm/s",
+      "minimo": 0.5,
+      "massimo": 4,
+      "iniziale": 1.8,
+      "rumore": 0.15
+    },
+    {
+      "id": "assorbimentoMotore",
+      "famiglia": "Funzionamento",
+      "nome": "Assorbimento del motore",
+      "unita": "A",
+      "atteso": 12,
+      "attesoTesto": "12 A",
+      "minimo": 8,
+      "massimo": 16,
+      "iniziale": 11.5,
+      "rumore": 0.3
+    },
+    {
+      "id": "livelloSapone",
+      "famiglia": "Consumi",
+      "nome": "Livello sapone",
+      "unita": "%",
+      "atteso": 70,
+      "attesoTesto": "almeno 15 %",
+      "minimo": 15,
+      "massimo": 100,
+      "iniziale": 68,
+      "rumore": 0.6
+    },
+    {
+      "id": "livelloLiquidi",
+      "famiglia": "Consumi",
+      "nome": "Livello liquidi di lavaggio",
+      "unita": "%",
+      "atteso": 64,
+      "attesoTesto": "almeno 15 %",
+      "minimo": 15,
+      "massimo": 100,
+      "iniziale": 62,
+      "rumore": 0.5
+    },
+    {
+      "id": "consumoPerCiclo",
+      "famiglia": "Consumi",
+      "nome": "Consumo per ciclo",
+      "unita": "ml",
+      "atteso": 80,
+      "attesoTesto": "80 ml",
+      "minimo": 60,
+      "massimo": 100,
+      "iniziale": 82,
+      "rumore": 1.2
+    }
+  ],
+  "piano": [
+    {
+      "id": "PM-LAV-001",
+      "titolo": "Controllo cuscinetti del cestello",
+      "descrizione": "Intervento previsto dal piano di manutenzione, da eseguire alla scadenza.",
+      "parametro": "vibrazioniCestello",
+      "scaduto": true
+    }
+  ],
+  "scenari": [
+    {
+      "id": "consumabile-finito",
+      "nome": "Consumabile finito",
+      "origine": "consumo",
+      "tipologia": "consumo",
+      "priorita": "media",
+      "anomaliaRispettoAlPiano": false,
+      "titolo": "Sapone finito",
+      "descrizione": "Il serbatoio del sapone è esaurito. Serve un rifornimento.",
+      "parametro": "livelloSapone",
+      "parametri": [{ "id": "livelloSapone", "valore": 0 }]
+    },
+    {
+      "id": "consumo-anomalo",
+      "nome": "Consumo anomalo",
+      "origine": "anomalia",
+      "tipologia": "anomalia rispetto al piano",
+      "priorita": "alta",
+      "anomaliaRispettoAlPiano": true,
+      "riferimentoPiano": "PM-LAV-002",
+      "titolo": "Consumo di sapone sopra il piano",
+      "descrizione": "La lavatrice consuma più sapone del previsto. L'intervento si esegue e resta segnato come anomalia rispetto al piano.",
+      "parametro": "consumoPerCiclo",
+      "parametri": [{ "id": "consumoPerCiclo", "valore": 180 }]
+    },
+    {
+      "id": "rischio-blocco",
+      "nome": "Rischio di blocco",
+      "origine": "critico",
+      "tipologia": "rischio di blocco di produzione",
+      "priorita": "urgente",
+      "anomaliaRispettoAlPiano": true,
+      "riferimentoPiano": "PM-LAV-001",
+      "titolo": "Rischio di blocco del cestello",
+      "descrizione": "Vibrazioni del cestello e assorbimento del motore crescono insieme. Rischio di blocco di produzione.",
+      "parametro": "vibrazioniCestello",
+      "parametri": [
+        { "id": "vibrazioniCestello", "valore": 11 },
+        { "id": "assorbimentoMotore", "valore": 26 }
+      ]
+    }
+  ]
+}

@@ -76,6 +76,18 @@ const server = createServer(async (richiesta, risposta) => {
       return json(risposta, 200, pacchetto);
     }
 
+    const ingressoMacchina = url.pathname.match(/^\/api\/tecnici\/([^/]+)\/ingresso-macchina$/);
+    if (richiesta.method === "GET" && ingressoMacchina) {
+      const logon = normalizza(decodeURIComponent(ingressoMacchina[1]));
+      const archivio = await carica();
+      const tecnico = tecnicoDi(archivio, logon);
+      if (!tecnico) return json(risposta, 404, { errore: "Nessun tecnico con questo logon." });
+      const ticket = (archivio.ticket ?? [])
+        .filter((voce) => voce.logonTecnico === tecnico.logon && voce.origine)
+        .map(ticketPerApp);
+      return json(risposta, 200, { ticket });
+    }
+
     const eseguiti = url.pathname.match(/^\/api\/tecnici\/([^/]+)\/ticket-eseguiti$/);
     if (richiesta.method === "GET" && eseguiti) {
       const logon = normalizza(decodeURIComponent(eseguiti[1]));
@@ -101,6 +113,7 @@ const server = createServer(async (richiesta, risposta) => {
         messaggio: "Aggiornamenti registrati.",
         interventi: esito.interventi,
         ticket: esito.ticket,
+        ricevuti: esito.ricevuti,
       });
     }
 
@@ -171,6 +184,7 @@ function applicaSincronizzazione(archivio, pacchetto) {
 
   let interventiApplicati = 0;
   let ticketApplicati = 0;
+  const ricevuti = [];
   for (const aggiornamento of pacchetto.interventi) {
     const record = (archivio.interventi ?? []).find((voce) => voce.id === aggiornamento.id && voce.logonTecnico === tecnico.logon);
     if (!record) continue;
@@ -197,6 +211,8 @@ function applicaSincronizzazione(archivio, pacchetto) {
         record.ricevutoIl = String(aggiornamento.aggiornato || pacchetto.inviato || new Date().toISOString());
       }
     }
+    applicaCampiMacchina(record, aggiornamento);
+    ricevuti.push(ticketPerApp(record));
     ticketApplicati += 1;
   }
 
@@ -210,7 +226,28 @@ function applicaSincronizzazione(archivio, pacchetto) {
     ticket: ticketApplicati,
   });
   archivio.aggiornamenti = archivio.aggiornamenti.slice(0, 20);
-  return { interventi: interventiApplicati, ticket: ticketApplicati };
+  return { interventi: interventiApplicati, ticket: ticketApplicati, ricevuti };
+}
+
+const CAMPI_MACCHINA = [
+  "macchina",
+  "tipoMacchina",
+  "tipologia",
+  "origine",
+  "parametro",
+  "valoreRilevato",
+  "valoreAtteso",
+  "rilevato",
+  "riferimentoPiano",
+  "anomaliaRispettoAlPiano",
+];
+
+function applicaCampiMacchina(record, aggiornamento) {
+  if (aggiornamento?.origine == null && aggiornamento?.tipologia == null) return;
+  for (const campo of CAMPI_MACCHINA) {
+    if (aggiornamento[campo] !== undefined) record[campo] = aggiornamento[campo];
+  }
+  if (aggiornamento.priorita) record.priorita = String(aggiornamento.priorita);
 }
 
 function unisciAnnotazioni(esistenti, nuove) {
@@ -352,7 +389,7 @@ function segnaInviati(archivio, logon) {
 }
 
 function ticketPerApp(ticket) {
-  return {
+  const pubblico = {
     id: ticket.id,
     titolo: ticket.titolo,
     descrizione: ticket.descrizione ?? "",
@@ -364,6 +401,10 @@ function ticketPerApp(ticket) {
     aggiornato: ticket.aggiornato,
     risposte: ticket.risposte ?? [],
   };
+  for (const campo of CAMPI_MACCHINA) {
+    if (ticket[campo] !== undefined) pubblico[campo] = ticket[campo];
+  }
+  return pubblico;
 }
 
 function dataLeggibile(iso) {
